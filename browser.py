@@ -1,5 +1,5 @@
 import display
-import lexer
+import parser
 import url
 import layout
 
@@ -7,12 +7,12 @@ class Browser:
     def __init__(self):
         self.scroll = 0
     
-    def draw(self, display_list):
+    def draw(self):
         if self.scroll > self.layout.max_scroll:
             self.scroll = self.layout.max_scroll
         viewport_height = display.size[1]
         display.reset()
-        for x, y, c, f in display_list:
+        for x, y, c, f in self.display_list:
             if y < self.scroll: continue
             if y >= self.scroll + viewport_height: continue
             style = ()
@@ -24,10 +24,12 @@ class Browser:
         
         display.render()
 
-    def load(self, url: url.URL):
-        text = lexer.lex(url.request())
-        self.layout = layout.Layout(text)
-        self.draw(self.layout.display_list)
+    def load(self, url):
+        body = url.request()
+        self.nodes = parser.HTMLParser(body).parse()
+        self.layout = layout.Layout(self.nodes)
+        self.display_list = self.layout.display_list
+        self.draw()
     
     def loop(self):
         while True:
@@ -43,9 +45,10 @@ class Browser:
                 #     print("LEFT")
                 case _:
                     display.show_cursor()
+                    print()
                     return
             if self.scroll < 0:
                 self.scroll = 0
             if self.scroll > self.layout.max_scroll:
                 self.scroll = self.layout.max_scroll
-            self.draw(self.layout.display_list)
+            self.draw()
