@@ -1,3 +1,5 @@
+import html
+
 class Text:
     def __init__(self, text: str):
         self.text: str = text
@@ -7,6 +9,7 @@ class Tag:
         self.tag: str = tag
 
 def lex(body: str) -> list[Text, Tag]:
+    body = html.unescape(body)
     out: list[Text, Tag] = []
     buffer = ""
     in_tag = False

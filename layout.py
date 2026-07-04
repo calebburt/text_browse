@@ -1,6 +1,8 @@
 import display
 import lexer
 
+import re
+
 class Layout:
     def __init__(self, tokens: list[lexer.Text, lexer.Tag]):
         self.display_list = []
@@ -17,17 +19,17 @@ class Layout:
         if isinstance(tok, lexer.Text):
             self.word(tok)
         elif tok.tag == "i":
-            i = True
+            self.i = True
         elif tok.tag == "/i":
-            i = False
+            self.i = False
         # elif tok.tag == "em":
         #     i = True
         # elif tok.tag == "/em":
         #     i = False
         elif tok.tag == "b":
-            b = True
+            self.b = True
         elif tok.tag == "/b":
-            b = False
+            self.b = False
         # elif tok.tag == "strong":
         #     b = True
         # elif tok.tag == "/strong":
@@ -39,7 +41,8 @@ class Layout:
             self.cursor_y += 1
     
     def word(self, word: lexer.Text):
-        for word in word.text.split():
+        toks = word.text.split()
+        for word in toks:
             w = len(word)
             if self.cursor_x > 0 and self.cursor_x + w + 1 > self.WIDTH:
                 self.flush()

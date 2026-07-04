@@ -9,8 +9,12 @@ class URL:
         self.path = "/" + url
     
     def request(self):
-        resp = requests.get(f"{self.scheme}://{self.host}/{self.path}")
-        headers = resp.headers
-        content = resp.text
+        resp = requests.get(f"{self.scheme}://{self.host}{self.path}")
+
+        # Detect encoding
+        encoding = resp.apparent_encoding
+
+        # Decode using the chosen encoding
+        content = resp.content.decode(encoding, errors="replace")
 
         return content
