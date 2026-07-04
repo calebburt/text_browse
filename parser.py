@@ -101,7 +101,7 @@ class HTMLParser:
                 else:
                     self.add_tag("body")
             elif open_tags == ["html", "head"] and \
-                tag not in ["/head"] + self.HEAD_TAGS:
+                tag not in ["/head"] + HEAD_TAGS:
                 self.add_tag("/head")
             else:
                 break

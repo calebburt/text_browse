@@ -9,6 +9,9 @@ class URL:
         self.path = "/" + url
     
     def request(self):
+        if self.scheme == "file":
+            content = open(self.path).read()
+            return content
         resp = requests.get(f"{self.scheme}://{self.host}{self.path}")
 
         # Detect encoding

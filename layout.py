@@ -11,7 +11,8 @@ class Layout:
         self.b = False
         self.i = False
         self.WIDTH, self.HEIGHT = display.size[0], display.size[1]
-        self.recurse(tree)
+        self.recurse(tree.children[1]) # Layout body only
+        self.flush()
         self.max_scroll = max(0, self.cursor_y - self.HEIGHT + 1)
     
     def recurse(self, tree: parser.HTMLNode):
@@ -47,6 +48,10 @@ class Layout:
         elif tag == "b":
             self.b = True
         elif tag == "br":
+            self.flush()
+        elif tag == "hr":
+            self.flush()
+            self.line.append((0, "\u2500" * display.size[0], (False, False)))
             self.flush()
 
     def close_tag(self, tag):
