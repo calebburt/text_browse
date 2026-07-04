@@ -1,50 +1,33 @@
 import display
-
-def lex(body):
-    text = ""
-    in_tag = False
-    for c in body:
-        if c == "<":
-            in_tag = True
-        elif c == ">":
-            in_tag = False
-        elif not in_tag:
-            text += c
-
-    return text
+import lexer
+import url
+import layout
 
 class Browser:
     def __init__(self):
-        self.display_list = []
         self.scroll = 0
-
-    def layout(self, text):
-        self.display_list = []
-        WIDTH, HEIGHT = display.size[0], display.size[1]
-        cursor_x, cursor_y = 0, 0
-        for c in text:
-            self.display_list.append((cursor_x, cursor_y, c))
-            cursor_x += 1
-            if cursor_x >= WIDTH:
-                cursor_y += 1
-                cursor_x = 0
-        self.max_scroll = max(0, cursor_y - HEIGHT + 1)
     
-    def draw(self):
-        if self.scroll > getattr(self, 'max_scroll', 0):
-            self.scroll = self.max_scroll
+    def draw(self, display_list):
+        if self.scroll > self.layout.max_scroll:
+            self.scroll = self.layout.max_scroll
+        viewport_height = display.size[1]
         display.reset()
-        for x, y, c in self.display_list:
+        for x, y, c, f in display_list:
             if y < self.scroll: continue
-            if y >= self.scroll + display.size[1]: continue
-            display.draw_text((x, y), c)
+            if y >= self.scroll + viewport_height: continue
+            style = ()
+            if f[0]:
+                style = style + (1,)
+            if f[1]:
+                style = style + (3,)
+            display.draw_text((x, y - self.scroll), c, style=style)
         
-        display.render(self.scroll)
+        display.render()
 
-    def load(self, url):
-        text = lex(url.request())
-        self.layout(text)
-        self.draw()
+    def load(self, url: url.URL):
+        text = lexer.lex(url.request())
+        self.layout = layout.Layout(text)
+        self.draw(self.layout.display_list)
     
     def loop(self):
         while True:
@@ -63,6 +46,6 @@ class Browser:
                     return
             if self.scroll < 0:
                 self.scroll = 0
-            if self.scroll > getattr(self, 'max_scroll', 0):
-                self.scroll = self.max_scroll
-            self.draw()
+            if self.scroll > self.layout.max_scroll:
+                self.scroll = self.layout.max_scroll
+            self.draw(self.layout.display_list)

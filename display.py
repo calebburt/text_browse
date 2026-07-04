@@ -54,20 +54,18 @@ display_list: list[tuple[tuple[int, int], tuple[float, float, float], tuple[int]
 def reset():
     global display_list
     display_list = []
-
-def render(scroll=0):
-    buffer = [[" " for _ in range(size[0])] for _ in range(size[1])]
-    for pos, color, style, text in display_list:
-        x, y = pos
-        row = y - scroll
-        if 0 <= x < size[0] and 0 <= row < size[1]:
-            buffer[row][x] = text
-    hide_cursor()
-    cls()
-    p("\n".join("".join(row) for row in buffer))
-    p("\033[H")
     show_cursor()
+
+def render():
+    cls()
+    hide_cursor()
+    for pos, color, style, text in display_list:
+        cur(pos)
+        stl(style)
+        col(color)
+        p(text)
     sys.stdout.flush()
+    size = shutil.get_terminal_size(fallback=(80, 24))
 
 def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=()):
     display_list.append((pos, color, style, text))
