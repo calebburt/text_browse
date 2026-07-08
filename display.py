@@ -32,6 +32,9 @@ def cur(pos):
 def col(color: tuple[float, float, float]):
     color: tuple[int, int, int] = tuple([int(c * 255) for c in color])
     p(f"\033[38;2;{color[0]};{color[1]};{color[2]}m")
+def back(color: tuple[float, float, float]):
+    color: tuple[int, int, int] = tuple([int(c * 255) for c in color])
+    p(f"\033[48;2;{color[0]};{color[1]};{color[2]}m")
 
 def stl(styles: tuple[KeyboardInterrupt]):
     rst()
@@ -59,14 +62,26 @@ def reset():
 def render():
     cls()
     hide_cursor()
-    for pos, color, style, text in display_list:
+    for pos, color, bg, style, text in display_list:
         cur(pos)
         stl(style)
         col(color)
+        back(bg)
         p(text)
     sys.stdout.flush()
+    global size
     size = shutil.get_terminal_size(fallback=(80, 24))
 
-def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=()):
-    display_list.append((pos, color, style, text))
-    
+def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=(), bg: tuple[float, float, float]=(0, 0, 0,)):
+    display_list.append((pos, color, bg, style, text))
+
+
+def draw_rect(pos: tuple[int, int], size: tuple[int, int], color: tuple[float, float, float]=(1, 1, 1,)):
+    x, y = pos
+    width, height = size
+    if width <= 0 or height <= 0:
+        return
+
+    fill = " " * width
+    for row in range(height):
+        draw_text((x, y + row), fill, bg=color)

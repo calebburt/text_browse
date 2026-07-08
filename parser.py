@@ -6,7 +6,7 @@ class HTMLNode:
 
 class Text(HTMLNode):
     def __init__(self, text, parent):
-        self.text = text
+        self.text: str = text
         self.children = []
         self.parent = parent
     def __repr__(self):
@@ -31,8 +31,8 @@ HEAD_TAGS = [
 ]
 
 class HTMLParser:
-    def __init__(self, body):
-        self.body = body
+    def __init__(self, body: str):
+        self.body: str = body
         self.unfinished: list[HTMLNode] = []
     def parse(self):
         text = ""
@@ -51,7 +51,7 @@ class HTMLParser:
         if not in_tag and text:
             self.add_text(text)
         return self.finish()
-    def add_text(self, text):
+    def add_text(self, text: str):
         if text.isspace(): return
         self.implicit_tags(None)
         parent = self.unfinished[-1]
@@ -74,21 +74,46 @@ class HTMLParser:
             parent = self.unfinished[-1] if self.unfinished else None
             node = Element(tag, attributes, parent)
             self.unfinished.append(node)
-    def get_attributes(self, text):
-        parts = text.split()
-        if len(parts) == 0:
+    def get_attributes(self, text: str):
+        parts = []
+        buf = []
+        in_quote = None
+
+        for ch in text:
+            if in_quote:
+                if ch == in_quote:
+                    in_quote = None
+                else:
+                    buf.append(ch)
+            else:
+                if ch in ("'", '"'):
+                    in_quote = ch
+                elif ch.isspace():
+                    if buf:
+                        parts.append("".join(buf))
+                        buf = []
+                else:
+                    buf.append(ch)
+
+        if buf:
+            parts.append("".join(buf))
+
+        # Parse tokens
+        if not parts:
             return "", {}
+
         tag = parts[0].casefold()
         attributes = {}
+
         for attrpair in parts[1:]:
             if "=" in attrpair:
                 key, value = attrpair.split("=", 1)
-                if len(value) > 2 and value[0] in ["'", "\""]:
-                    value = value[1:-1]
                 attributes[key.casefold()] = value
             else:
                 attributes[attrpair.casefold()] = ""
+
         return tag, attributes
+
     def implicit_tags(self, tag):
         while True:
             open_tags = [node.tag for node in self.unfinished]

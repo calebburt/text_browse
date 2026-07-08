@@ -8,27 +8,24 @@ class Browser:
         self.scroll = 0
     
     def draw(self):
-        if self.scroll > self.layout.max_scroll:
-            self.scroll = self.layout.max_scroll
+        if self.scroll > self.document.max_scroll:
+            self.scroll = self.document.max_scroll
         viewport_height = display.size[1]
         display.reset()
-        for x, y, c, f in self.display_list:
-            if y < self.scroll: continue
-            if y >= self.scroll + viewport_height: continue
-            style = ()
-            if f[0]:
-                style = style + (1,)
-            if f[1]:
-                style = style + (3,)
-            display.draw_text((x, y - self.scroll), c, style=style)
+        for cmd in self.display_list:
+            if cmd.top > self.scroll + viewport_height: continue
+            if cmd.bottom < self.scroll: continue
+            cmd.execute(self.scroll)
         
         display.render()
 
     def load(self, url):
         body = url.request()
         self.nodes = parser.HTMLParser(body).parse()
-        self.layout = layout.Layout(self.nodes)
-        self.display_list = self.layout.display_list
+        self.document = layout.DocumentLayout(self.nodes)
+        self.document.layout()
+        self.display_list = []
+        layout.paint_tree(self.document, self.display_list)
         self.draw()
     
     def loop(self):
@@ -49,6 +46,6 @@ class Browser:
                     return
             if self.scroll < 0:
                 self.scroll = 0
-            if self.scroll > self.layout.max_scroll:
-                self.scroll = self.layout.max_scroll
+            if self.scroll > self.document.max_scroll:
+                self.scroll = self.document.max_scroll
             self.draw()
