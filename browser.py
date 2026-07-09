@@ -1,6 +1,6 @@
 import display
 import parser
-import url
+import css
 import layout
 
 class Browser:
@@ -22,6 +22,7 @@ class Browser:
     def load(self, url):
         body = url.request()
         self.nodes = parser.HTMLParser(body).parse()
+        css.style(self.nodes)
         self.document = layout.DocumentLayout(self.nodes)
         self.document.layout()
         self.display_list = []
@@ -36,10 +37,6 @@ class Browser:
                     self.scroll -= 1
                 case "\033[B":
                     self.scroll += 1
-                # case "\033[C":
-                #     print("RIGHT")
-                # case "\033[D":
-                #     print("LEFT")
                 case _:
                     display.show_cursor()
                     print()

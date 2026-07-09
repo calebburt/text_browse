@@ -3,6 +3,7 @@ import html
 class HTMLNode:
     children: list["HTMLNode"]
     parent: "HTMLNode"
+    style: dict[str, str]
 
 class Text(HTMLNode):
     def __init__(self, text, parent):

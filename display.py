@@ -60,28 +60,30 @@ def reset():
     show_cursor()
 
 def render():
-    cls()
     hide_cursor()
+    cls()
     for pos, color, bg, style, text in display_list:
         cur(pos)
         stl(style)
         col(color)
-        back(bg)
+        if bg != None:
+            back(bg)
         p(text)
     sys.stdout.flush()
     global size
     size = shutil.get_terminal_size(fallback=(80, 24))
 
-def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=(), bg: tuple[float, float, float]=(0, 0, 0,)):
+def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=(), bg: tuple[float, float, float]=None):
     display_list.append((pos, color, bg, style, text))
 
 
 def draw_rect(pos: tuple[int, int], size: tuple[int, int], color: tuple[float, float, float]=(1, 1, 1,)):
-    x, y = pos
-    width, height = size
-    if width <= 0 or height <= 0:
-        return
+    if color != None:
+        x, y = pos
+        width, height = size
+        if width <= 0 or height <= 0:
+            return
 
-    fill = " " * width
-    for row in range(height):
-        draw_text((x, y + row), fill, bg=color)
+        fill = " " * width
+        for row in range(height):
+            draw_text((x, y + row), fill, bg=color)
