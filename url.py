@@ -21,3 +21,20 @@ class URL:
         content = resp.content.decode(encoding, errors="replace")
 
         return content
+    
+    def resolve(self, url: str):
+        if not url.startswith("/"):
+            dir, _ = self.path.rsplit("/", 1)
+            while url.startswith("../"):
+                _, url = url.split("/", 1)
+                if "/" in dir:
+                    dir, _ = dir.rsplit("/", 1)
+            url = dir + "/" + url
+        if "://" in url: return URL(url)
+        if not url.startswith("/"):
+            dir, _ = self.path.rsplit("/", 1)
+            url = dir + "/" + url
+        if url.startswith("//"):
+            return URL(self.scheme + ":" + url)
+        else:
+            return URL(self.scheme + "://" + self.host + url)

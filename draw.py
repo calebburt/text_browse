@@ -13,7 +13,7 @@ FORMATTING_CODES = {
 }
 
 class DrawText:
-    def __init__(self, x1, y1, text, font: tuple[int] | tuple[str], bg: tuple[float] | None = None):
+    def __init__(self, x1, y1, text, font: tuple[int] | tuple[str], bg: tuple[float] | None = None, color: tuple[float] | None = None):
         if font and isinstance(font[0], str):
             font = tuple([FORMATTING_CODES[style] for style in font])
         self.top = y1
@@ -22,9 +22,10 @@ class DrawText:
         self.font = font
         self.bottom = y1 + 1
         self.bg = bg
+        self.color = color
 
     def execute(self, scroll):
-        display.draw_text((self.left, self.top - scroll), self.text, style=self.font, bg=self.bg)
+        display.draw_text((self.left, self.top - scroll), self.text, style=self.font, bg=self.bg, color=self.color)
 
 class DrawRect:
     def __init__(self, x1, y1, x2, y2, color):

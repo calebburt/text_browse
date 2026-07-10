@@ -1,0 +1,113 @@
+body {
+  color: #222;
+  background-color: #fff;
+}
+
+/* Headings */
+h1, h2, h3 {
+  font-weight: bold;
+  color: black;
+}
+
+/* Text elements */
+p {
+  color: #333;
+}
+
+i, em {
+  font-style: italic;
+}
+
+b, strong {
+  font-weight: bold;
+}
+
+/* Links */
+a {
+  color: #0000ee;
+}
+
+/* a:visited {
+  color: #551a8b;
+}
+
+a:hover {
+  color: #000;
+} */
+
+/* Code + preformatted */
+pre {
+  background-color: gray;
+  color: #fff;
+}
+
+code {
+  background-color: #eee;
+  color: #333;
+}
+
+/* Lists */
+ul, ol {
+  color: #333;
+}
+
+/* Blockquotes */
+blockquote {
+  background-color: #f0f0f0;
+  color: #555;
+  font-style: italic;
+}
+
+/* Tables */
+table {
+  background-color: #f9f9f9;
+  color: #333;
+}
+
+th {
+  background-color: #ddd;
+  font-weight: bold;
+}
+
+td {
+  background-color: #eee;
+}
+
+/* Forms */
+textarea, input {
+  background-color: lightgray;
+  color: #333;
+}
+
+input:disabled, textarea:disabled {
+  background-color: #ddd;
+  color: #666;
+}
+
+select {
+  background-color: lightgray;
+  color: #333;
+}
+
+label {
+  color: #333;
+}
+
+/* Buttons */
+button {
+  background-color: slategray;
+  color: #fff;
+  font-weight: bold;
+}
+
+/* Semantic sections */
+header, footer {
+  background-color: #f7f7f7;
+  color: #333;
+  font-weight: bold;
+}
+
+section, article {
+  background-color: #fafafa;
+  color: #333;
+}

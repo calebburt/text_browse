@@ -3,6 +3,12 @@ import parser
 import css
 import layout
 
+DEFAULT_STYLE_SHEET = css.CSSParser(open("browser.css").read()).parse()
+
+def cascade_priority(rule):
+    selector, body = rule
+    return selector.priority
+
 class Browser:
     def __init__(self):
         self.scroll = 0
@@ -22,7 +28,21 @@ class Browser:
     def load(self, url):
         body = url.request()
         self.nodes = parser.HTMLParser(body).parse()
-        css.style(self.nodes)
+        rules = DEFAULT_STYLE_SHEET.copy()
+        links = [node.attributes["href"]
+             for node in layout.tree_to_list(self.nodes, [])
+             if isinstance(node, parser.Element)
+             and node.tag == "link"
+             and node.attributes.get("rel") == "stylesheet"
+             and "href" in node.attributes]
+        for link in links:
+            style_url = url.resolve(link)
+            try:
+                body = style_url.request()
+            except:
+                continue
+            rules.extend(css.CSSParser(body).parse())
+        css.style(self.nodes, sorted(rules, key=cascade_priority))
         self.document = layout.DocumentLayout(self.nodes)
         self.document.layout()
         self.display_list = []

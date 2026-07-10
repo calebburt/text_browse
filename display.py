@@ -62,15 +62,22 @@ def reset():
 def render():
     hide_cursor()
     cls()
+    global size
+    width, height = size
     for pos, color, bg, style, text in display_list:
+        x, y = pos
+        if x < 0 or y < 0 or x >= width or y >= height:
+            continue
+        if x + len(text) <= 0 or x >= width:
+            continue
         cur(pos)
         stl(style)
         col(color)
         if bg != None:
             back(bg)
         p(text)
+        rst()
     sys.stdout.flush()
-    global size
     size = shutil.get_terminal_size(fallback=(80, 24))
 
 def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=(), bg: tuple[float, float, float]=None):

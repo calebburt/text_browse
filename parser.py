@@ -17,7 +17,7 @@ class Element(HTMLNode):
     def __init__(self, tag, attributes, parent):
         self.tag: str = tag
         self.children = []
-        self.attributes = attributes
+        self.attributes: dict[str, str] = attributes
         self.parent = parent
     def __repr__(self):
         return "<" + self.tag + ">"

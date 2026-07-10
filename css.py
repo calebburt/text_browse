@@ -1,11 +1,86 @@
 import parser
 
+INHERITED_PROPERTIES = {
+    "font-size": "16px",
+    "font-style": "normal",
+    "font-weight": "normal",
+    "color": "black",
+    "background-color": "white", # nonstandard
+}
+
+class Selector:
+    priority: int
+
+    def matches(self, node: parser.HTMLNode):
+        raise NotImplementedError()
+
+class TagSelector(Selector):
+    def __init__(self, tag):
+        self.tag: str = tag
+        self.priority: int = 1
+
+    def matches(self, node: parser.HTMLNode):
+        return isinstance(node, parser.Element) and self.tag == node.tag
+    
+class ClassSelector(Selector):
+    def __init__(self, class_):
+        self.class_: str = class_
+        self.priority: int = 10
+    
+    def matches(self, node: parser.HTMLNode):
+        return isinstance(node, parser.Element) and "class" in node.attributes and self.class_ in node.attributes["class"].split()
+    
+class IDSelector(Selector):
+    def __init__(self, id):
+        self.id: str = id
+        self.priority: int = 10
+    
+    def matches(self, node: parser.HTMLNode):
+        return isinstance(node, parser.Element) and "id" in node.attributes and self.id == node.attributes["id"]
+
+class DescendantSelector(Selector):
+    def __init__(self, ancestor, descendant):
+        self.ancestor: Selector = ancestor
+        self.descendant: Selector = descendant
+        self.priority: int = self.ancestor.priority + self.descendant.priority
+
+    def matches(self, node: parser.HTMLNode):
+        if not self.descendant.matches(node): return False
+        while node.parent:
+            if self.ancestor.matches(node.parent): return True
+            node = node.parent
+        return False
+
+class SelectorSequence(Selector):
+    def __init__(self, selectors):
+        self.selectors: list[Selector] = selectors
+        self.priority: int = sum([sel.priority for sel in self.selectors])
+    
+    def matches(self, node: parser.HTMLNode):
+        return all([selector.matches(node) for selector in self.selectors])
+
+class SelectorList(Selector):
+    def __init__(self, selectors):
+        self.selectors: list[Selector] = selectors
+        self.priority: int = sum([sel.priority for sel in self.selectors])
+    
+    def matches(self, node: parser.HTMLNode):
+        return any([selector.matches(node) for selector in self.selectors])
+
 class CSSParser:
     def __init__(self, s):
         self.s = s
         self.i = 0
 
     def whitespace(self):
+        # Comments
+        if self.i < len(self.s) and self.s[self.i:self.i+2] == "/*":
+            self.i += 2
+            while self.i < len(self.s) and self.s[self.i:self.i+2] != "*/":
+                self.i += 1
+            if self.i < len(self.s):
+                self.i += 2
+        # Whitespace
         while self.i < len(self.s) and self.s[self.i].isspace():
             self.i += 1
     
@@ -32,10 +107,53 @@ class CSSParser:
         self.whitespace()
         val = self.word()
         return prop.casefold(), val
+
+    def simple_selector(self, token):
+        selectors = []
+        i = 0
+        if i < len(token) and token[i] not in ".#":
+            start = i
+            while i < len(token) and token[i] not in ".#":
+                i += 1
+            selectors.append(TagSelector(token[start:i].casefold()))
+        while i < len(token):
+            if token[i] not in ".#":
+                raise Exception("Parsing error")
+            kind = token[i]
+            i += 1
+            start = i
+            while i < len(token) and token[i] not in ".#":
+                i += 1
+            if start == i:
+                raise Exception("Parsing error")
+            name = token[start:i].casefold()
+            if kind == ".":
+                selectors.append(ClassSelector(name))
+            else:
+                selectors.append(IDSelector(name))
+        return selectors[0] if len(selectors) == 1 else SelectorSequence(selectors)
+
+    def selector(self):
+        selectors = []
+        while True:
+            self.whitespace()
+            out = self.simple_selector(self.word())
+            self.whitespace()
+            while self.i < len(self.s) and self.s[self.i] not in "{,":
+                descendant = self.simple_selector(self.word())
+                out = DescendantSelector(out, descendant)
+                self.whitespace()
+            selectors.append(out)
+            self.whitespace()
+            if self.i < len(self.s) and self.s[self.i] == ",":
+                self.literal(",")
+                continue
+            break
+        return selectors[0] if len(selectors) == 1 else SelectorList(selectors)
     
     def body(self):
         pairs = {}
-        while self.i < len(self.s):
+        while self.i < len(self.s) and self.s[self.i] != "}":
             try:
                 prop, val = self.pair()
                 pairs[prop] = val
@@ -43,13 +161,33 @@ class CSSParser:
                 self.literal(";")
                 self.whitespace()
             except Exception:
-                why = self.ignore_until([";"])
+                why = self.ignore_until([";", "}"])
                 if why == ";":
                     self.literal(";")
                     self.whitespace()
                 else:
                     break
         return pairs
+
+    def parse(self):
+        rules = []
+        while self.i < len(self.s):
+            try:
+                self.whitespace()
+                selector = self.selector()
+                self.literal("{")
+                self.whitespace()
+                body = self.body()
+                self.literal("}")
+                rules.append((selector, body))
+            except Exception:
+                why = self.ignore_until(["}"])
+                if why == "}":
+                    self.literal("}")
+                    self.whitespace()
+                else:
+                    break
+        return rules
     
     def ignore_until(self, chars):
         while self.i < len(self.s):
@@ -59,11 +197,20 @@ class CSSParser:
                 self.i += 1
         return None
 
-def style(node: parser.HTMLNode):
+def style(node: parser.HTMLNode, rules):
     node.style = {}
+    for property, default_value in INHERITED_PROPERTIES.items():
+        if node.parent:
+            node.style[property] = node.parent.style[property]
+        else:
+            node.style[property] = default_value
+    for selector, body in rules:
+        if not selector.matches(node): continue
+        for property, value in body.items():
+            node.style[property] = value
     if isinstance(node, parser.Element) and "style" in node.attributes:
         pairs = CSSParser(node.attributes["style"]).body()
         for property, value in pairs.items():
             node.style[property] = value
     for child in node.children:
-        style(child)
+        style(child, rules)

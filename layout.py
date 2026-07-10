@@ -155,8 +155,6 @@ COLORS = {
     "whitesmoke": (0.961, 0.961, 0.961),
     "yellow": (1.000, 1.000, 0.000),
     "yellowgreen": (0.604, 0.804, 0.196),
-
-    "transparent": None
 }
 
 def paint_tree(layout_object, display_list):
@@ -164,6 +162,21 @@ def paint_tree(layout_object, display_list):
 
     for child in layout_object.children:
         paint_tree(child, display_list)
+
+def tree_to_list(tree, list):
+    list.append(tree)
+    for child in tree.children:
+        tree_to_list(child, list)
+    return list
+
+def color_to_tuple(color: str):
+    if color in COLORS: 
+        return COLORS[color]
+    elif color[0] == "#":
+        color = color.lstrip('#')
+        if len(color) == 3:
+            color = ''.join(char * 2 for char in color)
+        return tuple(round(int(color[i:i+2], 16) / 255.0, 3) for i in (0, 2, 4))
 
 class DocumentLayout:
     def __init__(self, node):
@@ -180,7 +193,7 @@ class DocumentLayout:
         child.layout()
         self.display_list = child.display_list
         self.height = child.height
-        self.max_scroll = self.height
+        self.max_scroll = self.height - HEIGHT
     
     def paint(self):
         return []
@@ -196,7 +209,6 @@ class BlockLayout:
         self.y: int = None
         self.width: int = None
         self.height: int = None
-        self.pre: bool = False
         
     def layout(self):
         if self.previous:
@@ -234,18 +246,17 @@ class BlockLayout:
 
     def recurse(self, tree):
         if isinstance(tree, parser.Text):
-            if self.pre:
-                for line in tree.text.split('\n'):
-                    self.line.append((self.cursor_x, line, (self.b, self.i)))
-                    self.flush()
-            else:
-                for word in tree.text.split():
-                    self.word(word)
+            for word in tree.text.split():
+                self.word(tree, word)
         else:
-            self.open_tag(tree.tag)
+            if tree.tag == "br":
+                self.flush()
+            elif tree.tag == "hr":
+                self.flush()
+                self.line.append((0, "\u2500" * self.width, (False, False), tree.style["color"]))
+                self.flush()
             for child in tree.children:
                 self.recurse(child)
-            self.close_tag(tree.tag)
     
     def layout_mode(self):
         if isinstance(self.node, parser.Text):
@@ -254,56 +265,39 @@ class BlockLayout:
                   child.tag in BLOCK_ELEMENTS
                   for child in self.node.children]):
             return "block"
-        elif self.node.children:
-            return "inline"
-        else:
-            return "block"
+        return "inline"
     
-    def word(self, word: str):
+    def word(self, node: parser.HTMLNode, word: str):
+        color = node.style["color"]
+        b = node.style["font-weight"] == "bold"
+        i = node.style["font-style"] == "italic"
         toks = word.split()
         for word in toks:
             w = len(word)
             if self.cursor_x > 0 and self.cursor_x + w + 1 > self.width:
                 self.flush()
-            self.line.append((self.cursor_x, word, (self.b, self.i)))
+            self.line.append((self.cursor_x, word, (b, i), color))
             self.cursor_x += w + 1
 
     def flush(self):
         if not self.line: return
-        for rel_x, word, font in self.line:
-            x = self.x + rel_x
+        # Handle text-align
+        text_align = self.node.style.get("text-align", "left")
+        if text_align == "center":
+            total_width = sum(len(word) + 1 for _, word, _, _ in self.line) - 1
+            offset = (self.width - total_width) // 2
+        elif text_align == "right":
+            total_width = sum(len(word) + 1 for _, word, _, _ in self.line) - 1
+            offset = self.width - total_width
+        else:
+            offset = 0
+        for rel_x, word, font, color in self.line:
+            x = self.x + rel_x + offset
             y = self.y + self.cursor_y
-            self.display_list.append((x, y, word, font))
+            self.display_list.append((x, y, word, font, color))
         self.cursor_x = 0
         self.cursor_y += 1
         self.line = []
-    
-    def open_tag(self, tag):
-        if tag == "i":
-            self.i = True
-        elif tag == "b":
-            self.b = True
-        elif tag == "pre":
-            self.pre = True
-            self.flush()
-        elif tag == "br":
-            self.flush()
-        elif tag == "hr":
-            self.flush()
-            self.line.append((0, "\u2500" * self.width, (False, False)))
-            self.flush()
-
-    def close_tag(self, tag):
-        if tag == "i":
-            self.i = False
-        elif tag == "b":
-            self.b = False
-        elif tag == "pre":
-            self.flush()
-            self.pre = False
-        elif tag == "p":
-            self.flush()
-            self.cursor_y += 1
     
     def paint(self):
         cmds = []
@@ -312,14 +306,14 @@ class BlockLayout:
         else:
             bgcolor = self.node.parent.style.get("background-color", "transparent")
         x2, y2 = self.x + self.width, self.y + self.height
-        rect = draw.DrawRect(self.x, self.y, x2, y2, COLORS[bgcolor])
+        rect = draw.DrawRect(self.x, self.y, x2, y2, color_to_tuple(bgcolor))
         cmds.append(rect)
         if self.layout_mode() == "inline":
-            for x, y, word, font in self.display_list:
+            for x, y, word, font, color in self.display_list:
                 style = []
                 if font[0]:
                     style.append("bold")
                 if font[1]:
                     style.append("italic")
-                cmds.append(draw.DrawText(x, y, word, style, COLORS[bgcolor]))
+                cmds.append(draw.DrawText(x, y, word, style, color_to_tuple(bgcolor), color_to_tuple(color)))
         return cmds
