@@ -23,6 +23,7 @@ class URL:
         return content
     
     def resolve(self, url: str):
+        if "://" in url: return URL(url)
         if not url.startswith("/"):
             dir, _ = self.path.rsplit("/", 1)
             while url.startswith("../"):
@@ -30,7 +31,6 @@ class URL:
                 if "/" in dir:
                     dir, _ = dir.rsplit("/", 1)
             url = dir + "/" + url
-        if "://" in url: return URL(url)
         if not url.startswith("/"):
             dir, _ = self.path.rsplit("/", 1)
             url = dir + "/" + url

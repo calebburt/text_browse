@@ -29,6 +29,20 @@ class ClassSelector(Selector):
     
     def matches(self, node: parser.HTMLNode):
         return isinstance(node, parser.Element) and "class" in node.attributes and self.class_ in node.attributes["class"].split()
+
+class PseudoclassSelector(Selector):
+    def __init__(self, pseudoclass, base):
+        self.pseudoclass: str = pseudoclass
+        self.base: Selector = base
+        self.priority: int = self.base.priority
+    
+    def matches(self, node):
+        if not self.base.matches(node):
+            return False
+        if self.pseudoclass == "focus":
+            return node.is_focused
+        else:
+            return False
     
 class IDSelector(Selector):
     def __init__(self, id):
@@ -111,24 +125,26 @@ class CSSParser:
     def simple_selector(self, token):
         selectors = []
         i = 0
-        if i < len(token) and token[i] not in ".#":
+        if i < len(token) and token[i] not in ":.#":
             start = i
-            while i < len(token) and token[i] not in ".#":
+            while i < len(token) and token[i] not in ":.#":
                 i += 1
             selectors.append(TagSelector(token[start:i].casefold()))
         while i < len(token):
-            if token[i] not in ".#":
+            if token[i] not in ":.#":
                 raise Exception("Parsing error")
             kind = token[i]
             i += 1
             start = i
-            while i < len(token) and token[i] not in ".#":
+            while i < len(token) and token[i] not in ":.#":
                 i += 1
             if start == i:
                 raise Exception("Parsing error")
             name = token[start:i].casefold()
             if kind == ".":
                 selectors.append(ClassSelector(name))
+            elif kind == ":":
+                selectors.append(PseudoclassSelector(name))
             else:
                 selectors.append(IDSelector(name))
         return selectors[0] if len(selectors) == 1 else SelectorSequence(selectors)

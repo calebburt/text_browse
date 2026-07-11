@@ -72,7 +72,8 @@ def render():
             continue
         cur(pos)
         stl(style)
-        col(color)
+        if color != None:
+            col(color)
         if bg != None:
             back(bg)
         p(text)

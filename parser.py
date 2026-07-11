@@ -4,6 +4,7 @@ class HTMLNode:
     children: list["HTMLNode"]
     parent: "HTMLNode"
     style: dict[str, str]
+    is_focused: bool = False
 
 class Text(HTMLNode):
     def __init__(self, text, parent):

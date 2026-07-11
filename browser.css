@@ -27,6 +27,10 @@ a {
   color: #0000ee;
 }
 
+a:focus {
+  background-color: gray;
+}
+
 /* a:visited {
   color: #551a8b;
 }
@@ -36,14 +40,8 @@ a:hover {
 } */
 
 /* Code + preformatted */
-pre {
-  background-color: gray;
-  color: #fff;
-}
-
-code {
-  background-color: #eee;
-  color: #333;
+pre, code {
+  background-color: lightgray;
 }
 
 /* Lists */
@@ -77,6 +75,10 @@ td {
 textarea, input {
   background-color: lightgray;
   color: #333;
+}
+
+textarea:focus, input:focus {
+  background-color: gray;
 }
 
 input:disabled, textarea:disabled {
