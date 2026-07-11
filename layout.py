@@ -13,6 +13,10 @@ BLOCK_ELEMENTS = [
     "legend", "details", "summary"
 ]
 
+HIDDEN_ELEMENTS = [
+    "script", "style", "meta", "link", "head", "title"
+]
+
 COLORS = {
     "aliceblue": (0.941, 0.973, 1.000),
     "antiquewhite": (0.980, 0.922, 0.843),
@@ -193,7 +197,6 @@ class DocumentLayout:
         child.layout()
         self.display_list = child.display_list
         self.height = child.height
-        self.max_scroll = self.height - HEIGHT
     
     def paint(self):
         return []
@@ -320,6 +323,8 @@ class BlockLayout:
             for word in tree.text.split():
                 self.word(tree, word)
         else:
+            if tree.tag in HIDDEN_ELEMENTS:
+                return
             if tree.tag == "br":
                 self.new_line()
             elif tree.tag == "hr":
