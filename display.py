@@ -1,26 +1,55 @@
 import shutil
 import os, sys
-import tty
-import termios
 
-def read_key():
-    fd = sys.stdin.fileno()
-    old_settings = termios.tcgetattr(fd)
-    try:
-        tty.setraw(fd)
-        ch1 = sys.stdin.read(1)
-        if ch1 == '\033':
-            ch2 = sys.stdin.read(1)
-            ch3 = sys.stdin.read(1)
-            return ch1 + ch2 + ch3
-        return ch1
-    finally:
-        termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+if os.name == "nt":
+    import msvcrt
+
+    def read_key():
+        ch = msvcrt.getch()
+
+        if ch in (b'\x00', b'\xe0'):
+            ch2 = msvcrt.getch()
+
+            key_map = {
+                b'H': '\033[A',  # Up
+                b'P': '\033[B',  # Down
+                b'M': '\033[C',  # Right
+                b'K': '\033[D',  # Left
+            }
+
+            return key_map.get(ch2, (ch + ch2).decode(errors="ignore"))
+
+        return ch.decode('utf-8', errors='ignore')
+
+    def cls():
+        os.system("cls")
+
+else:
+    import tty
+    import termios
+
+    def read_key():
+        fd = sys.stdin.fileno()
+        old_settings = termios.tcgetattr(fd)
+
+        try:
+            tty.setraw(fd)
+            ch1 = sys.stdin.read(1)
+
+            if ch1 == '\033':
+                ch2 = sys.stdin.read(1)
+                ch3 = sys.stdin.read(1)
+                return ch1 + ch2 + ch3
+
+            return ch1
+        finally:
+            termios.tcsetattr(fd, termios.TCSADRAIN, old_settings)
+        
+    def cls():
+        os.system("clear")
+
 
 p = sys.stdout.write
-
-def cls():
-    os.system("clear")
 
 def home():
     p("\033[H")

@@ -12,7 +12,7 @@ class URL:
         if self.scheme == "file":
             content = open(self.path).read()
             return content
-        resp = requests.get(str(self))
+        resp = requests.get(str(self), verify=False)
 
         # Detect encoding
         encoding = resp.apparent_encoding
