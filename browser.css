@@ -10,9 +10,9 @@ h1, h2, h3 {
 }
 
 /* Text elements */
-p {
-  color: #333;
-}
+/* p {
+  color: #222;
+} */
 
 i, em {
   font-style: italic;

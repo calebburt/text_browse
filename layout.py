@@ -174,13 +174,16 @@ def tree_to_list(tree, list):
     return list
 
 def color_to_tuple(color: str):
-    if color in COLORS: 
-        return COLORS[color]
-    elif color[0] == "#":
-        color = color.lstrip('#')
-        if len(color) == 3:
-            color = ''.join(char * 2 for char in color)
-        return tuple(round(int(color[i:i+2], 16) / 255.0, 3) for i in (0, 2, 4))
+    try:
+        if color in COLORS: 
+            return COLORS[color]
+        elif color[0] == "#":
+            color = color.lstrip('#')
+            if len(color) == 3:
+                color = ''.join(char * 2 for char in color)
+            return tuple(round(int(color[i:i+2], 16) / 255.0, 3) for i in (0, 2, 4))
+    except:
+        return None
 
 class DocumentLayout:
     def __init__(self, node):

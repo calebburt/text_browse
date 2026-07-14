@@ -24,6 +24,7 @@ class Tab:
         self.scroll = 0
         self.focus = None
         self.url = None
+        self.history = []
     
     def draw(self, offset):
         self.loop()
@@ -31,8 +32,15 @@ class Tab:
             if cmd.top > self.scroll + self.tab_height: continue
             if cmd.bottom < self.scroll: continue
             cmd.execute(self.scroll - offset)
+    
+    def go_back(self):
+        if len(self.history) > 1:
+            self.history.pop()
+            back = self.history.pop()
+            self.load(back)
 
     def load(self, url):
+        self.history.append(url)
         self.focus = None
         self.url = url
         self.scroll = 0
@@ -97,3 +105,20 @@ class Tab:
             self.scroll = 0
         if self.scroll > self.document.height - self.tab_height:
             self.scroll = self.document.height - self.tab_height
+    
+    def handle_key(self, key):
+        match key:
+            case "\033[A":
+                self.scroll -= 1
+            case "\033[B":
+                self.scroll += 1
+            case " ":
+                self.scroll += 10
+            case "\012" | "\015":
+                self.enter()
+            case "\011":
+                #forward tab
+                self.advance_tab()
+            case "\033[Z":
+                #backward tab
+                self.advance_tab(backward=True)

@@ -86,10 +86,8 @@ display_list: list[tuple[tuple[int, int], tuple[float, float, float], tuple[int]
 def reset():
     global display_list
     display_list = []
-    show_cursor()
 
 def render():
-    hide_cursor()
     cls()
     global size
     width, height = size
@@ -101,9 +99,9 @@ def render():
             continue
         cur(pos)
         stl(style)
-        if color != None:
+        if color:
             col(color)
-        if bg != None:
+        if bg:
             back(bg)
         p(text)
         rst()
