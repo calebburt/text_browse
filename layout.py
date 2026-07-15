@@ -284,6 +284,53 @@ class TextLayout:
             style.append("italic")
         return [draw.DrawText(self.x, self.y, self.word, style, color_to_tuple(bgcolor), color_to_tuple(color))]
 
+class InputLayout:
+    def __init__(self, node, parent, previous):
+        self.node: parser.HTMLNode = node
+        self.children = []
+        self.parent = parent
+        self.previous = previous
+        self.x, self.y = None, None
+
+    def layout(self):
+        self.width = 10
+
+        if self.previous:
+            self.x = self.previous.x + 1 + self.previous.width
+        else:
+            self.x = self.parent.x
+
+        self.height = 1
+    
+    def paint(self):
+        cmds = []
+        bgcolor = self.node.style.get("background-color", "transparent")
+        
+        if bgcolor != "transparent":
+            rect = draw.DrawRect(self.x, self.y, self.x + self.width, self.y + self.height, color_to_tuple(bgcolor))
+            cmds.append(rect)
+        
+        if self.node.tag == "input":
+            text = self.node.attributes.get("value", "")
+        elif self.node.tag == "button":
+            if len(self.node.children) == 1 and \
+               isinstance(self.node.children[0], parser.Text):
+                text = self.node.children[0].text
+            else:
+                text_els = [child for child in self.node.children if isinstance(child, parser.Text)]
+                text = " ".join([child.text for child in text_els])
+        
+        color = self.node.style["color"]
+        bgcolor = self.node.parent.style.get("background-color", "transparent")
+        font = self.node.style.get("font-weight", "normal") == "bold", self.node.style.get("font-style", "normal") == "italic"
+        style = []
+        if font[0]:
+            style.append("bold")
+        if font[1]:
+            style.append("italic")
+        cmds.append(draw.DrawText(self.x, self.y, text, style, color_to_tuple(bgcolor), color_to_tuple(color)))
+        return cmds
+
 class BlockLayout:
     def __init__(self, node, parent, previous):
         self.node: parser.HTMLNode = node
@@ -326,7 +373,7 @@ class BlockLayout:
             for word in tree.text.split():
                 self.word(tree, word)
         else:
-            if tree.tag in HIDDEN_ELEMENTS:
+            if self.layout_mode() == "none":
                 return
             if tree.tag == "br":
                 self.new_line()
@@ -334,15 +381,27 @@ class BlockLayout:
                 self.new_line()
                 self.children[-1].children.append(TextLayout(tree, "\u2500" * self.width, self.children[-1], None))
                 self.new_line()
+            elif tree.tag == "input" or tree.tag == "button":
+                if tree.attributes.get("type") == "hidden":
+                    return
+                self.input(tree)
             for child in tree.children:
                 self.recurse(child)
     
     def layout_mode(self):
-        if isinstance(self.node, parser.Text):
+        if self.node.style.get("display") == "block":
+            return "block"
+        elif self.node.style.get("display") == "inline":
             return "inline"
-        elif any([isinstance(child, parser.Element) and \
-                  child.tag in BLOCK_ELEMENTS
-                  for child in self.node.children]):
+        elif self.node.style.get("display") == "none":
+            return "none"
+        elif isinstance(self.node, parser.Element) and self.node.tag in HIDDEN_ELEMENTS:
+            return "none"
+        elif isinstance(self.node, parser.Text):
+            return "inline"
+        elif self.node.tag in BLOCK_ELEMENTS:
+            return "block"
+        elif any(isinstance(child, parser.Element) and child.tag in BLOCK_ELEMENTS for child in self.node.children):
             return "block"
         return "inline"
     
@@ -357,6 +416,17 @@ class BlockLayout:
             previous_word = line.children[-1] if line.children else None
             text = TextLayout(node, word, line, previous_word)
             line.children.append(text)
+
+    def input(self, node: parser.HTMLNode):
+        w = 10
+        if self.cursor_x + w > self.width:
+            self.new_line()
+        line = self.children[-1]
+        previous_word = line.children[-1] if line.children else None
+        input = InputLayout(node, line, previous_word)
+        line.children.append(input)
+
+        self.cursor_x += w + 1
 
     def new_line(self):
         self.cursor_x = 0
