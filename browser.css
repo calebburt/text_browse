@@ -28,7 +28,7 @@ a {
 }
 
 a:focus {
-  background-color: gray;
+  background-color: lightgray;
 }
 
 /* a:visited {
@@ -88,10 +88,6 @@ input:disabled, textarea:disabled {
 
 select {
   background-color: lightgray;
-  color: #333;
-}
-
-label {
   color: #333;
 }
 

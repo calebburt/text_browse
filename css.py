@@ -31,14 +31,11 @@ class ClassSelector(Selector):
         return isinstance(node, parser.Element) and "class" in node.attributes and self.class_ in node.attributes["class"].split()
 
 class PseudoclassSelector(Selector):
-    def __init__(self, pseudoclass, base):
+    def __init__(self, pseudoclass):
         self.pseudoclass: str = pseudoclass
-        self.base: Selector = base
-        self.priority: int = self.base.priority
-    
+        self.priority: int = 10
+
     def matches(self, node):
-        if not self.base.matches(node):
-            return False
         if self.pseudoclass == "focus":
             return node.is_focused
         else:
@@ -87,16 +84,17 @@ class CSSParser:
         self.i = 0
 
     def whitespace(self):
-        # Comments
-        if self.i < len(self.s) and self.s[self.i:self.i+2] == "/*":
-            self.i += 2
-            while self.i < len(self.s) and self.s[self.i:self.i+2] != "*/":
-                self.i += 1
-            if self.i < len(self.s):
+        while self.i < len(self.s):
+            if self.s[self.i:self.i+2] == "/*":
                 self.i += 2
-        # Whitespace
-        while self.i < len(self.s) and self.s[self.i].isspace():
-            self.i += 1
+                while self.i < len(self.s) and self.s[self.i:self.i+2] != "*/":
+                    self.i += 1
+                if self.i < len(self.s):
+                    self.i += 2
+            elif self.s[self.i].isspace():
+                self.i += 1
+            else:
+                break
     
     def word(self):
         start = self.i
@@ -109,17 +107,41 @@ class CSSParser:
             raise Exception("Parsing error")
         return self.s[start:self.i]
     
+    def selector_word(self):
+        # word() itself can't accept ":", pair() needs it to stop there
+        word = self.word()
+        while self.i < len(self.s) and self.s[self.i] == ":":
+            self.i += 1
+            word += ":" + self.word()
+        return word
+
     def literal(self, literal):
         if not (self.i < len(self.s) and self.s[self.i] == literal):
             raise Exception("Parsing error")
         self.i += 1
+
+    def value(self):
+        start = self.i
+        depth = 0
+        while self.i < len(self.s):
+            c = self.s[self.i]
+            if c == "(":
+                depth += 1
+            elif c == ")":
+                depth -= 1
+            elif c in ";}" and depth == 0:
+                break
+            self.i += 1
+        if not (self.i > start):
+            raise Exception("Parsing error")
+        return self.s[start:self.i].strip()
 
     def pair(self):
         prop = self.word()
         self.whitespace()
         self.literal(":")
         self.whitespace()
-        val = self.word()
+        val = self.value()
         return prop.casefold(), val
 
     def simple_selector(self, token):
@@ -153,10 +175,10 @@ class CSSParser:
         selectors = []
         while True:
             self.whitespace()
-            out = self.simple_selector(self.word())
+            out = self.simple_selector(self.selector_word())
             self.whitespace()
             while self.i < len(self.s) and self.s[self.i] not in "{,":
-                descendant = self.simple_selector(self.word())
+                descendant = self.simple_selector(self.selector_word())
                 out = DescendantSelector(out, descendant)
                 self.whitespace()
             selectors.append(out)

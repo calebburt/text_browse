@@ -162,7 +162,8 @@ COLORS = {
 }
 
 def paint_tree(layout_object, display_list):
-    display_list.extend(layout_object.paint())
+    if layout_object.needs_paint():
+        display_list.extend(layout_object.paint())
 
     for child in layout_object.children:
         paint_tree(child, display_list)
@@ -173,14 +174,28 @@ def tree_to_list(tree, list):
         tree_to_list(child, list)
     return list
 
+def in_focused_node(node):
+    while node:
+        if node.is_focused: return True
+        node = node.parent
+    return False
+
 def color_to_tuple(color: str):
     try:
-        if color in COLORS: 
+        color = color.casefold()
+        if color in COLORS:
             return COLORS[color]
+        elif color.startswith("rgb"):
+            args = color[color.index("(")+1:color.rindex(")")].replace(",", " ").replace("/", " ").split()
+            if len(args) >= 4 and float(args[3]) == 0:
+                return None
+            return tuple(round(float(a) / 255.0, 3) for a in args[:3])
         elif color[0] == "#":
             color = color.lstrip('#')
-            if len(color) == 3:
+            if len(color) in (3, 4):
                 color = ''.join(char * 2 for char in color)
+            if len(color) == 8 and int(color[6:8], 16) == 0:
+                return None
             return tuple(round(int(color[i:i+2], 16) / 255.0, 3) for i in (0, 2, 4))
     except:
         return None
@@ -200,7 +215,10 @@ class DocumentLayout:
         child.layout()
         self.display_list = child.display_list
         self.height = child.height
-    
+
+    def needs_paint(self):
+        return True
+
     def paint(self):
         return []
     
@@ -247,7 +265,10 @@ class LineLayout:
 
             for child in self.children:
                 child.x += offset
-    
+
+    def needs_paint(self):
+        return True
+
     def paint(self):
         return []
 
@@ -272,7 +293,10 @@ class TextLayout:
             self.x = self.parent.x
 
         self.height = 1
-    
+
+    def needs_paint(self):
+        return True
+
     def paint(self):
         color = self.node.style["color"]
         bgcolor = self.node.parent.style.get("background-color", "transparent")
@@ -282,6 +306,8 @@ class TextLayout:
             style.append("bold")
         if font[1]:
             style.append("italic")
+        if in_focused_node(self.node):
+            style.append("inverse")
         return [draw.DrawText(self.x, self.y, self.word, style, color_to_tuple(bgcolor), color_to_tuple(color))]
 
 class InputLayout:
@@ -301,7 +327,10 @@ class InputLayout:
             self.x = self.parent.x
 
         self.height = 1
-    
+
+    def needs_paint(self):
+        return True
+
     def paint(self):
         cmds = []
         bgcolor = self.node.style.get("background-color", "transparent")
@@ -312,6 +341,8 @@ class InputLayout:
         
         if self.node.tag == "input":
             text = self.node.attributes.get("value", "")
+            if self.node.attributes.get("type") == "password":
+                text = "*" * len(text)
         elif self.node.tag == "button":
             if len(self.node.children) == 1 and \
                isinstance(self.node.children[0], parser.Text):
@@ -321,13 +352,15 @@ class InputLayout:
                 text = " ".join([child.text for child in text_els])
         
         color = self.node.style["color"]
-        bgcolor = self.node.parent.style.get("background-color", "transparent")
         font = self.node.style.get("font-weight", "normal") == "bold", self.node.style.get("font-style", "normal") == "italic"
         style = []
         if font[0]:
             style.append("bold")
         if font[1]:
             style.append("italic")
+        if self.node.is_focused:
+            style.append("inverse")
+            text = text.ljust(self.width)
         cmds.append(draw.DrawText(self.x, self.y, text, style, color_to_tuple(bgcolor), color_to_tuple(color)))
         return cmds
 
@@ -385,6 +418,7 @@ class BlockLayout:
                 if tree.attributes.get("type") == "hidden":
                     return
                 self.input(tree)
+                return
             for child in tree.children:
                 self.recurse(child)
     
@@ -433,7 +467,11 @@ class BlockLayout:
         last_line = self.children[-1] if self.children else None
         new_line = LineLayout(self.node, self, last_line)
         self.children.append(new_line)
-    
+
+    def needs_paint(self):
+        return isinstance(self.node, parser.Text) or \
+            (self.node.tag != "input" and self.node.tag != "button")
+
     def paint(self):
         cmds = []
         if isinstance(self.node, parser.Element):

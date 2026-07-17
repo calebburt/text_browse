@@ -10,6 +10,8 @@ def cascade_priority(rule):
     return selector.priority
 
 def is_focusable(node):
+    if node.attributes.get("type") == "hidden":
+        return False
     if node.tag == "a" and "href" in node.attributes:
         return True
     elif "tabindex" in node.attributes:
@@ -46,7 +48,7 @@ class Tab:
         self.scroll = 0
         body = url.request()
         self.nodes = parser.HTMLParser(body).parse()
-        self.rules = DEFAULT_STYLE_SHEET.copy()
+        author_rules = []
         links = [node.attributes["href"]
              for node in layout.tree_to_list(self.nodes, [])
              if isinstance(node, parser.Element)
@@ -59,11 +61,14 @@ class Tab:
                 body = style_url.request()
             except:
                 continue
-            self.rules.extend(css.CSSParser(body).parse())
+            author_rules.extend(css.CSSParser(body).parse())
+        # author origin beats user agent origin regardless of specificity
+        self.rules = sorted(DEFAULT_STYLE_SHEET, key=cascade_priority) \
+                   + sorted(author_rules, key=cascade_priority)
         self.render()
 
     def render(self):
-        css.style(self.nodes, sorted(self.rules, key=cascade_priority))
+        css.style(self.nodes, self.rules)
         self.document = layout.DocumentLayout(self.nodes)
         self.document.layout()
         self.display_list = []

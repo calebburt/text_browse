@@ -60,6 +60,9 @@ class HTMLParser:
         node = Text(html.unescape(text), parent)
         parent.children.append(node)
     def add_tag(self, tag: str):
+        self_closing = tag.rstrip().endswith("/") and not tag.startswith("/")
+        if self_closing:
+            tag = tag.rstrip()[:-1]
         tag, attributes = self.get_attributes(tag)
         if tag.startswith("!"): return
         self.implicit_tags(tag)
@@ -68,7 +71,7 @@ class HTMLParser:
             node = self.unfinished.pop()
             parent = self.unfinished[-1]
             parent.children.append(node)
-        elif tag in SELF_CLOSING_TAGS:
+        elif tag in SELF_CLOSING_TAGS or self_closing:
             parent = self.unfinished[-1]
             node = Element(tag, attributes, parent)
             parent.children.append(node)
