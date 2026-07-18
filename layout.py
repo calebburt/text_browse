@@ -14,7 +14,7 @@ BLOCK_ELEMENTS = [
 ]
 
 HIDDEN_ELEMENTS = [
-    "script", "style", "meta", "link", "head", "title"
+    "script", "style", "meta", "link", "head", "title", "template"
 ]
 
 COLORS = {

@@ -2,6 +2,7 @@ import layout
 import parser
 import display
 import css
+import url
 
 DEFAULT_STYLE_SHEET = css.CSSParser(open("browser.css").read()).parse()
 
@@ -9,7 +10,18 @@ def cascade_priority(rule):
     selector, body = rule
     return selector.priority
 
+def is_hidden(node):
+    current = node
+    while current is not None:
+        if isinstance(current, parser.Element) and current.tag in layout.HIDDEN_ELEMENTS:
+            return True
+        current = current.parent
+    return False
+
+
 def is_focusable(node):
+    if is_hidden(node):
+        return False
     if node.attributes.get("type") == "hidden":
         return False
     if node.tag == "a" and "href" in node.attributes:
@@ -25,7 +37,7 @@ class Tab:
         self.tab_height = tab_height
         self.scroll = 0
         self.focus = None
-        self.url = None
+        self.url: url.URL = None
         self.history = []
 
     def draw(self, offset):
@@ -41,7 +53,7 @@ class Tab:
             back = self.history.pop()
             self.load(back)
 
-    def load(self, url):
+    def load(self, url: url.URL):
         self.history.append(url)
         self.focus = None
         self.url = url
@@ -74,12 +86,15 @@ class Tab:
         self.display_list = []
         layout.paint_tree(self.document, self.display_list)
 
-    def activate(self, elt):
+    def activate(self, elt: parser.HTMLNode):
         if elt.tag == "a" and "href" in elt.attributes:
             url = self.url.resolve(elt.attributes["href"])
             return self.load(url)
         elif elt.tag == "input":
-            pass # todo: make submit surrounding form
+            while elt:
+                if elt.tag == "form" and "action" in elt.attributes:
+                    return self.submit_form(elt)
+                elt = elt.parent
 
     def advance_tab(self, backward=False):
         focusable_nodes = [node
@@ -111,6 +126,23 @@ class Tab:
     def enter(self):
         if not self.focus: return
         self.activate(self.focus)
+    
+    def submit_form(self, elt: parser.Element):
+        inputs = [node for node in layout.tree_to_list(elt, [])
+                  if isinstance(node, parser.Element)
+                  and node.tag == "input"
+                  and "name" in node.attributes]
+        params = {}
+        for input in inputs:
+            name = input.attributes["name"]
+            value = input.attributes.get("value", "")
+            params[name] = value
+
+        url = self.url.resolve(elt.attributes["action"])
+        url.params = params
+        url.method = elt.attributes.get("method", "get")
+        
+        self.load(url)
 
     def loop(self):
         if self.scroll < 0:
