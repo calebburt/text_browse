@@ -4,6 +4,8 @@ import draw
 
 WIDTH, HEIGHT = display.size[0], display.size[1]
 
+INPUT_WIDTH = 20
+
 BLOCK_ELEMENTS = [
     "html", "body", "article", "section", "nav", "aside",
     "h1", "h2", "h3", "h4", "h5", "h6", "hgroup", "header",
@@ -319,7 +321,7 @@ class InputLayout:
         self.x, self.y = None, None
 
     def layout(self):
-        self.width = 10
+        self.width = INPUT_WIDTH
 
         if self.previous:
             self.x = self.previous.x + 1 + self.previous.width
@@ -339,10 +341,12 @@ class InputLayout:
             rect = draw.DrawRect(self.x, self.y, self.x + self.width, self.y + self.height, color_to_tuple(bgcolor))
             cmds.append(rect)
         
-        if self.node.tag == "input":
+        if self.node.tag == "input" or self.node.tag == "textarea":
             text = self.node.attributes.get("value", "")
             if self.node.attributes.get("type") == "password":
                 text = "*" * len(text)
+            if not text and not self.node.is_focused:
+                text = self.node.attributes.get("placeholder", "")
         elif self.node.tag == "button":
             if len(self.node.children) == 1 and \
                isinstance(self.node.children[0], parser.Text):
@@ -414,7 +418,7 @@ class BlockLayout:
                 self.new_line()
                 self.children[-1].children.append(TextLayout(tree, "\u2500" * self.width, self.children[-1], None))
                 self.new_line()
-            elif tree.tag == "input" or tree.tag == "button":
+            elif tree.tag in ("input", "textarea", "button"):
                 if tree.attributes.get("type") == "hidden":
                     return
                 self.input(tree)
@@ -452,7 +456,7 @@ class BlockLayout:
             line.children.append(text)
 
     def input(self, node: parser.HTMLNode):
-        w = 10
+        w = INPUT_WIDTH
         if self.cursor_x + w > self.width:
             self.new_line()
         line = self.children[-1]

@@ -130,7 +130,7 @@ class Tab:
     def submit_form(self, elt: parser.Element):
         inputs = [node for node in layout.tree_to_list(elt, [])
                   if isinstance(node, parser.Element)
-                  and node.tag == "input"
+                  and node.tag in ("input", "textarea")
                   and "name" in node.attributes]
         params = {}
         for input in inputs:
@@ -165,7 +165,7 @@ class Tab:
                 #backward tab
                 self.advance_tab(backward=True)
             case _:
-                if self.focus and self.focus.tag == "input":
+                if self.focus and self.focus.tag in ("input", "textarea"):
                     if self.focus.attributes.get("value") is None:
                         self.focus.attributes["value"] = ""
                     if key == "\010" or key == "\177":

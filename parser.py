@@ -31,6 +31,9 @@ HEAD_TAGS = [
     "base", "basefont", "bgsound", "noscript",
     "link", "meta", "title", "style", "script",
 ]
+# elements whose contents are text, not markup: everything up to the
+# matching close tag is one text node, so "<" inside them isn't a tag
+RAWTEXT_TAGS = ["script", "style", "textarea", "title"]
 
 class HTMLParser:
     def __init__(self, body: str):
@@ -39,7 +42,22 @@ class HTMLParser:
     def parse(self):
         text = ""
         in_tag = False
-        for c in self.body:
+        rawtext_tag = None
+        i = 0
+        while i < len(self.body):
+            c = self.body[i]
+            if rawtext_tag is not None:
+                close = "</" + rawtext_tag
+                after = self.body[i + len(close):i + len(close) + 1]
+                if self.body[i:i + len(close)].casefold() == close \
+                   and (after == "" or after == ">" or after == "/" or after.isspace()):
+                    if text.strip(): self.add_text(text)
+                    text = ""
+                    rawtext_tag = None
+                    continue
+                text += c
+                i += 1
+                continue
             if c == "<":
                 in_tag = True
                 if text: self.add_text(text)
@@ -47,9 +65,13 @@ class HTMLParser:
             elif c == ">":
                 in_tag = False
                 self.add_tag(text)
+                name = text.strip().split()[0].casefold() if text.strip() else ""
+                if name in RAWTEXT_TAGS and not text.rstrip().endswith("/"):
+                    rawtext_tag = name
                 text = ""
             else:
                 text += c
+            i += 1
         if not in_tag and text:
             self.add_text(text)
         return self.finish()
