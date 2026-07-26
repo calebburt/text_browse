@@ -3,6 +3,7 @@ import parser
 import display
 import css
 import url
+import js
 
 DEFAULT_STYLE_SHEET = css.CSSParser(open("browser.css").read()).parse()
 
@@ -37,6 +38,7 @@ class Tab:
         self.tab_height = tab_height
         self.scroll = 0
         self.focus = None
+        self.js: js.JSContext = None
         self.url: url.URL = None
         self.history = []
 
@@ -60,6 +62,24 @@ class Tab:
         self.scroll = 0
         body = url.request()
         self.nodes = parser.HTMLParser(body).parse()
+
+        scripts = [node for node
+                   in layout.tree_to_list(self.nodes, [])
+                   if isinstance(node, parser.Element)
+                   and node.tag == "script"]
+        self.js = js.JSContext(self) # new context for every page load
+        for script in scripts:
+            if "src" in script.attributes:
+                script_url = url.resolve(script.attributes["src"])
+                try:
+                    body = script_url.request()
+                except:
+                    continue
+            else:
+                body = script.children[0].text # text child
+
+            self.js.run(body)
+
         author_rules = []
         links = [node.attributes["href"]
              for node in layout.tree_to_list(self.nodes, [])
@@ -87,10 +107,12 @@ class Tab:
         layout.paint_tree(self.document, self.display_list)
 
     def activate(self, elt: parser.HTMLNode):
+        if self.js.dispatch_event("click", elt): return
+        
         if elt.tag == "a" and "href" in elt.attributes:
             url = self.url.resolve(elt.attributes["href"])
             return self.load(url)
-        elif elt.tag == "input":
+        elif elt.tag in ["input", "button"]: # enter on any input submits the form
             while elt:
                 if elt.tag == "form" and "action" in elt.attributes:
                     return self.submit_form(elt)
@@ -128,6 +150,8 @@ class Tab:
         self.activate(self.focus)
     
     def submit_form(self, elt: parser.Element):
+        if self.js.dispatch_event("submit", elt): return
+
         inputs = [node for node in layout.tree_to_list(elt, [])
                   if isinstance(node, parser.Element)
                   and node.tag in ("input", "textarea")
@@ -165,6 +189,9 @@ class Tab:
                 #backward tab
                 self.advance_tab(backward=True)
             case _:
+                if self.focus:
+                    if self.js.dispatch_event("keydown", self.focus): return
+                
                 if self.focus and self.focus.tag in ("input", "textarea"):
                     if self.focus.attributes.get("value") is None:
                         self.focus.attributes["value"] = ""
@@ -174,7 +201,7 @@ class Tab:
                     else:
                         self.focus.attributes["value"] += key
                     display.p("\a")
-                    # display.cur((self.focus.layout.x + len(self.focus.attributes["value"]), self.focus.layout.y - self.scroll))
                     self.render()
+                    # display.cur((self.focus.layout.x + len(self.focus.attributes["value"]), self.focus.layout.y - self.scroll))
                 elif key == " ":
                     self.scroll += 10

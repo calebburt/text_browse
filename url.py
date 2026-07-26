@@ -1,6 +1,7 @@
 import json
 import os
 import requests
+import charset_normalizer
 
 COOKIE_JAR_PATH = os.path.join(os.path.dirname(__file__), ".cookies")
 
@@ -69,11 +70,14 @@ class URL:
             case "post":
                 resp = requests.post(str(self), data=self.params, cookies=COOKIE_JAR) # , verify=False)
 
-        # Detect encoding
-        encoding = resp.apparent_encoding
+        result = charset_normalizer.from_bytes(resp.content).best()
+        content = resp.content
+        
+        if result:
+            # Decode safely using the detected encoding
+            content = result.output()
 
-        # Decode using the chosen encoding
-        content = resp.content.decode(encoding, errors="replace")
+        content = content.decode('utf-8', errors='replace')  # Fallback to UTF-8 with replacement for undecodable bytes
 
         COOKIE_JAR.update(resp.cookies)
         save_cookie_jar(COOKIE_JAR)

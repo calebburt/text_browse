@@ -6,11 +6,18 @@ class HTMLNode:
     style: dict[str, str]
     is_focused: bool = False
 
+    def to_html(self) -> str:
+        raise NotImplementedError("Subclasses must implement to_html() method.")
+
 class Text(HTMLNode):
     def __init__(self, text, parent):
         self.text: str = text
         self.children = []
         self.parent = parent
+
+    def to_html(self) -> str:
+        return html.escape(self.text)
+    
     def __repr__(self):
         return repr(self.text)
 
@@ -20,6 +27,12 @@ class Element(HTMLNode):
         self.children = []
         self.attributes: dict[str, str] = attributes
         self.parent = parent
+
+    def to_html(self):
+        return "<" + self.tag + "".join(f' {k}="{html.escape(v)}"' for k, v in self.attributes.items()) + ">" + \
+               "".join(child.to_html() for child in self.children) + \
+               "</" + self.tag + ">"
+
     def __repr__(self):
         return "<" + self.tag + ">"
 
