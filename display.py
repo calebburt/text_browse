@@ -88,23 +88,27 @@ def reset():
     display_list = []
 
 def render():
-    cls()
     global size
     width, height = size
+    # build the whole frame as one string: clearing with an in-band escape
+    # instead of os.system() and writing once means no blank frame between
+    # clear and repaint; ?2026 makes it fully atomic where supported
+    buf = ["\033[?2026h", "\033[2J", "\033[H"]
     for pos, color, bg, style, text in display_list:
         x, y = pos
         if x < 0 or y < 0 or x >= width or y >= height:
             continue
-        if x + len(text) <= 0 or x >= width:
+        if x + len(text) <= 0:
             continue
-        cur(pos)
-        stl(style)
+        buf.append(f"\033[{y+1};{x+1}H\033[0m" + "".join(f"\033[{s}m" for s in style))
         if color:
-            col(color)
+            buf.append("\033[38;2;%d;%d;%dm" % tuple(int(v * 255) for v in color))
         if bg:
-            back(bg)
-        p(text)
-        rst()
+            buf.append("\033[48;2;%d;%d;%dm" % tuple(int(v * 255) for v in bg))
+        buf.append(text[:width - x])  # clip so the terminal never auto-wraps
+    buf.append("\033[0m")
+    buf.append("\033[?2026l")
+    sys.stdout.write("".join(buf))
     sys.stdout.flush()
     size = shutil.get_terminal_size(fallback=(80, 24))
 

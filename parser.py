@@ -75,7 +75,7 @@ class HTMLParser:
                 in_tag = True
                 if text: self.add_text(text)
                 text = ""
-            elif c == ">":
+            elif c == ">" and in_tag:
                 in_tag = False
                 self.add_tag(text)
                 name = text.strip().split()[0].casefold() if text.strip() else ""
@@ -89,7 +89,12 @@ class HTMLParser:
             self.add_text(text)
         return self.finish()
     def add_text(self, text: str):
-        if text.isspace(): return
+        if text.isspace():
+            # whitespace is significant inside <pre> (newlines, indentation
+            # between highlighted spans); elsewhere it's dropped
+            if not any(isinstance(node, Element) and node.tag == "pre"
+                       for node in self.unfinished):
+                return
         self.implicit_tags(None)
         parent = self.unfinished[-1]
         node = Text(html.unescape(text), parent)

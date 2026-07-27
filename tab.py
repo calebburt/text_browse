@@ -118,32 +118,64 @@ class Tab:
                     return self.submit_form(elt)
                 elt = elt.parent
 
+    def node_bounds(self, nodes):
+        """id(node) -> (top, bottom) rows spanned; nodes hidden by CSS
+        (display: none) have no layout objects and get no entry."""
+        ids = {id(node) for node in nodes}
+        bounds = {}
+        for obj in layout.tree_to_list(self.document, []):
+            current = getattr(obj, "node", None)
+            while current is not None:
+                if id(current) in ids:
+                    top, bottom = bounds.get(id(current), (obj.y, obj.y + obj.height))
+                    bounds[id(current)] = (min(top, obj.y), max(bottom, obj.y + obj.height))
+                current = current.parent
+        return bounds
+
+    def scroll_to(self, node):
+        bounds = self.node_bounds([node]).get(id(node))
+        if not bounds: return
+        top, bottom = bounds
+        if top < self.scroll:
+            self.scroll = top
+        elif bottom > self.scroll + self.tab_height:
+            self.scroll = min(top, bottom - self.tab_height)
+
     def advance_tab(self, backward=False):
         focusable_nodes = [node
             for node in layout.tree_to_list(self.nodes, [])
             if isinstance(node, parser.Element) and is_focusable(node)]
         focusable_nodes.sort(key=lambda node: int(node.attributes.get("tabindex", "9999999") if int(node.attributes.get("tabindex", "9999999")) >= 0 else 9999999))
         
-        if self.focus in focusable_nodes:
-            if backward:
-                dir = -1
-            else:
-                dir = 1
-            idx = focusable_nodes.index(self.focus) + dir
+        # CSS-hidden nodes get no bounds entry and must be skipped, or
+        # tabbing gets stuck cycling the links before them
+        bounds = self.node_bounds(focusable_nodes)
+        focusable_nodes = [node for node in focusable_nodes if id(node) in bounds]
+        if not focusable_nodes: return
+
+        def visible(node):
+            top, bottom = bounds[id(node)]
+            return top < self.scroll + self.tab_height and bottom > self.scroll
+
+        dir = -1 if backward else 1
+        in_view = [node for node in focusable_nodes if visible(node)]
+        if self.focus in focusable_nodes and (visible(self.focus) or not in_view):
+            new_focus = focusable_nodes[(focusable_nodes.index(self.focus) + dir) % len(focusable_nodes)]
+        elif in_view:
+            # the old focus scrolled out of view (or nothing was focused):
+            # the topmost focusable in the viewport takes focus, so scrolling
+            # doubles as focus navigation on long pages
+            new_focus = min(in_view, key=lambda node: bounds[id(node)][0])
         else:
-            idx = 0
-        
-        if idx >= len(focusable_nodes):
-            idx = 0
-        elif idx < 0:
-            idx = len(focusable_nodes) - 1
+            new_focus = focusable_nodes[0]
 
         if self.focus:
             self.focus.is_focused = False
-        self.focus = focusable_nodes[idx]
+        self.focus = new_focus
         self.focus.is_focused = True
 
         self.render()
+        self.scroll_to(self.focus)
 
     def enter(self):
         if not self.focus: return

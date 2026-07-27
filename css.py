@@ -6,6 +6,10 @@ INHERITED_PROPERTIES = {
     "font-weight": "normal",
     "color": "black",
     "background-color": "white", # nonstandard
+    "white-space": "normal",
+    # not inherited in real CSS, but decorations propagate to inline
+    # descendants, which inheritance approximates well enough here
+    "text-decoration": "none",
 }
 
 class Selector:

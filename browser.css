@@ -1,3 +1,17 @@
+/* Display types: everything defaults to inline, block elements opt in */
+html, body, article, section, nav, aside,
+h1, h2, h3, h4, h5, h6, hgroup, header,
+footer, address, p, hr, pre, blockquote,
+ol, ul, menu, li, dl, dt, dd, figure,
+figcaption, main, div, table, form, fieldset,
+legend, details, summary {
+  display: block;
+}
+
+head, title, meta, link, style, script, template {
+  display: none;
+}
+
 body {
   color: #222;
   background-color: #fff;
@@ -25,6 +39,15 @@ b, strong {
 /* Links */
 a {
   color: #0000ee;
+  text-decoration: underline;
+}
+
+u, ins {
+  text-decoration: underline;
+}
+
+s, strike, del {
+  text-decoration: line-through;
 }
 
 a:focus {
@@ -42,6 +65,10 @@ a:hover {
 /* Code + preformatted */
 pre, code {
   background-color: lightgray;
+}
+
+pre {
+  white-space: pre;
 }
 
 /* Lists */

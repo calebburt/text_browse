@@ -1,3 +1,5 @@
+import itertools
+
 import display
 import parser
 import draw
@@ -176,11 +178,43 @@ def tree_to_list(tree, list):
         tree_to_list(child, list)
     return list
 
+def display_type(node):
+    """Resolve a node's display for layout: "block", "inline", or "none"."""
+    if isinstance(node, parser.Text):
+        return "inline"
+    if node.tag in HIDDEN_ELEMENTS:
+        return "none"
+    display = node.style.get("display")
+    if display is None:
+        return "block" if node.tag in BLOCK_ELEMENTS else "inline"
+    display = display.casefold()
+    if display == "none":
+        return "none"
+    if display.startswith("inline") or display == "contents":
+        return "inline"
+    return "block"  # block, flex, grid, table, list-item, ...
+
 def in_focused_node(node):
     while node:
         if node.is_focused: return True
         node = node.parent
     return False
+
+def decoration_styles(node):
+    """Terminal styles for the node's text-decoration."""
+    decoration = node.style.get("text-decoration", "none").casefold().split()
+    styles = []
+    if "underline" in decoration: styles.append("underline")
+    if "line-through" in decoration: styles.append("strikethrough")
+    return styles
+
+def inline_paint_attrs(child):
+    """Background, text color, focus state, and decorations of an inline layout object."""
+    node = child.node
+    element = node if isinstance(node, parser.Element) else node.parent
+    bg = element.style.get("background-color", "transparent")
+    color = node.style.get("color", "black")
+    return bg, color, in_focused_node(node), decoration_styles(node)
 
 def color_to_tuple(color: str):
     try:
@@ -272,15 +306,29 @@ class LineLayout:
         return True
 
     def paint(self):
-        return []
+        # fill the gaps between words that share a background and focus
+        # state, so a focused link inverts as one span, not word-by-word;
+        # decorations carry across a gap only when both sides have them
+        cmds = []
+        for prev, child in zip(self.children, self.children[1:]):
+            gap = child.x - (prev.x + prev.width)
+            bg, color, focused, decorations = inline_paint_attrs(child)
+            prev_bg, _, prev_focused, prev_decorations = inline_paint_attrs(prev)
+            if gap <= 0 or (bg, focused) != (prev_bg, prev_focused):
+                continue
+            style = (["inverse"] if focused else []) + [d for d in decorations if d in prev_decorations]
+            cmds.append(draw.DrawText(prev.x + prev.width, self.y, " " * gap,
+                                      style, color_to_tuple(bg), color_to_tuple(color)))
+        return cmds
 
 class TextLayout:
-    def __init__(self, node, word, parent, previous):
+    def __init__(self, node, word, parent, previous, spacing=1):
         self.node = node
         self.word = word
         self.children = []
         self.parent = parent
         self.previous = previous
+        self.spacing = spacing  # 0 for preformatted text: the word carries its own spaces
         self.x = None
         self.y = None
         self.width = None
@@ -290,7 +338,7 @@ class TextLayout:
         self.width = len(self.word)
 
         if self.previous:
-            self.x = self.previous.x + 1 + self.previous.width
+            self.x = self.previous.x + self.previous.width + self.spacing
         else:
             self.x = self.parent.x
 
@@ -308,6 +356,7 @@ class TextLayout:
             style.append("bold")
         if font[1]:
             style.append("italic")
+        style += decoration_styles(self.node)
         if in_focused_node(self.node):
             style.append("inverse")
         return [draw.DrawText(self.x, self.y, self.word, style, color_to_tuple(bgcolor), color_to_tuple(color))]
@@ -362,6 +411,7 @@ class InputLayout:
             style.append("bold")
         if font[1]:
             style.append("italic")
+        style += decoration_styles(self.node)
         if self.node.is_focused:
             style.append("inverse")
             text = text.ljust(self.width)
@@ -369,10 +419,12 @@ class InputLayout:
         return cmds
 
 class BlockLayout:
-    def __init__(self, node, parent, previous):
+    def __init__(self, node, parent, previous, inline_nodes=None):
         self.node: parser.HTMLNode = node
         self.parent: BlockLayout | DocumentLayout = parent
         self.previous: BlockLayout = previous
+        # anonymous box: lay out just this run of inline siblings
+        self.inline_nodes: list[parser.HTMLNode] | None = inline_nodes
         self.children: list[BlockLayout] = []
         self.display_list = []
         self.x: int = None
@@ -390,15 +442,22 @@ class BlockLayout:
             self.y = self.parent.y
 
         mode = self.layout_mode()
+        if mode == "none":
+            self.height = 0
+            return
         if mode == "block":
+            shown = [c for c in self.node.children if display_type(c) != "none"]
             previous = None
-            for child in self.node.children:
-                next = BlockLayout(child, self, previous)
-                self.children.append(next)
-                previous = next
+            # a run of consecutive inline-level siblings shares one anonymous box
+            for is_block, group in itertools.groupby(shown, lambda c: display_type(c) == "block"):
+                for node in group if is_block else [self.node]:
+                    previous = BlockLayout(node, self, previous,
+                                           inline_nodes=None if is_block else list(group))
+                    self.children.append(previous)
         else:
             self.new_line()
-            self.recurse(self.node)
+            for node in self.inline_nodes or [self.node]:
+                self.recurse(node)
 
         for child in self.children:
             child.layout()
@@ -407,10 +466,9 @@ class BlockLayout:
 
     def recurse(self, tree):
         if isinstance(tree, parser.Text):
-            for word in tree.text.split():
-                self.word(tree, word)
+            self.text(tree)
         else:
-            if self.layout_mode() == "none":
+            if display_type(tree) == "none":
                 return
             if tree.tag == "br":
                 self.new_line()
@@ -427,22 +485,42 @@ class BlockLayout:
                 self.recurse(child)
     
     def layout_mode(self):
-        if self.node.style.get("display") == "block":
-            return "block"
-        elif self.node.style.get("display") == "inline":
+        if self.inline_nodes is not None:
             return "inline"
-        elif self.node.style.get("display") == "none":
-            return "none"
-        elif isinstance(self.node, parser.Element) and self.node.tag in HIDDEN_ELEMENTS:
-            return "none"
-        elif isinstance(self.node, parser.Text):
-            return "inline"
-        elif self.node.tag in BLOCK_ELEMENTS:
-            return "block"
-        elif any(isinstance(child, parser.Element) and child.tag in BLOCK_ELEMENTS for child in self.node.children):
+        display = display_type(self.node)
+        if display in ("none", "inline"):
+            return display
+        # a block container stacks block-level children vertically;
+        # if all its content is inline-level, lay the text out directly
+        if any(display_type(child) == "block" for child in self.node.children):
             return "block"
         return "inline"
     
+    def text(self, node: parser.Text):
+        if node.style.get("white-space", "normal").startswith("pre"):
+            self.pre_text(node)
+        else:
+            for word in node.text.split():
+                self.word(node, word)
+
+    def pre_text(self, node: parser.Text):
+        lines = node.text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
+        # a newline right after the <pre> start tag is ignored (HTML spec)
+        if lines[0] == "" and getattr(node.parent, "tag", None) == "pre" \
+           and node.parent.children[0] is node:
+            lines = lines[1:]
+        for i, line in enumerate(lines):
+            if i > 0:
+                self.new_line()
+            if not line and i == len(lines) - 1:
+                continue  # trailing newline: no extra blank row
+            # an empty TextLayout keeps blank lines one row tall
+            line = line.expandtabs(8)
+            line_layout = self.children[-1]
+            previous_word = line_layout.children[-1] if line_layout.children else None
+            line_layout.children.append(TextLayout(node, line, line_layout, previous_word, spacing=0))
+            self.cursor_x += len(line)
+
     def word(self, node: parser.HTMLNode, word: str):
         toks = word.split()
         for word in toks:

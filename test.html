@@ -1,12 +1,135 @@
 <!DOCTYPE html>
 <html>
-    <head>
-        <title>A Page</title>
-    </head>
-    <body>
-        <b>My Really Cool Page</b>
-        <hr>
-        <pre>print("hi")</pre>
-        It has <i>really</i> cool stuff!
-    </body>
+<head>
+    <title>The Text Browser Gauntlet</title>
+</head>
+<body>
+    <header>
+        <h1 style="text-align: center">The Text Browser Gauntlet</h1>
+        <p style="text-align: center">every layout trick this browser knows, on one page</p>
+    </header>
+    <hr>
+
+    <h2>1. Inline elements</h2>
+    <p>
+        Text can be <b>bold</b>, <i>italic</i>, <b><i>both at once</i></b>,
+        <u>underlined</u>, <s>struck through</s>, or
+        <span style="text-decoration: underline line-through">the works</span>.
+        Inline <code>code spans</code> keep their background across spaces, and
+        <span style="color: crimson">colors</span>
+        <span style="color: seagreen">are</span>
+        <span style="color: royalblue">inline</span> too.
+        Links like <a href="https://browser.engineering/">this one</a> are focusable with Tab
+        and invert as a single span when focused.
+    </p>
+
+    <h2>2. Block flow and anonymous boxes</h2>
+    <div>
+        This text sits directly in a div,
+        <div style="background-color: lavender">interrupted by a nested block with its own background,</div>
+        and then keeps flowing afterwards in an anonymous box.
+        A manual line break<br>works too.
+    </div>
+    <p style="text-align: center">This paragraph is centered.</p>
+    <p style="text-align: right">And this one hugs the right edge.</p>
+
+    <h2>3. Quotes, lists and a table</h2>
+    <blockquote>
+        A block quote gets an italic style and a background from the user-agent stylesheet.
+    </blockquote>
+    <ul>
+        <li>unordered things</li>
+        <li>with a nested list
+            <ul><li>like this one</li></ul>
+        </li>
+    </ul>
+    <table>
+        <tr><th>name</th><th>role</th></tr>
+        <tr><td>Ada</td><td>engineer</td></tr>
+        <tr><td>Grace</td><td>admiral</td></tr>
+    </table>
+
+    <h2>4. Preformatted text</h2>
+    <pre>
+  _____         _
+ |_   _|____  _| |_
+   | |/ _ \ \/ / __|
+   | |  __/&gt;  &lt;| |_
+   |_|\___/_/\_\\__|
+
+def indentation(survives):        # and so do comments
+	return survives + 1       # (this line starts with a real tab)
+
+if 3 > 2: print("a bare > is just text")
+</pre>
+    <div style="white-space: pre">white-space: pre   also works
+        on ordinary elements</div>
+
+    <h2>5. Hidden things</h2>
+    <p>Between the arrows lives an invisible span: → <span style="display: none">BOO!</span> ← nothing to see.</p>
+
+    <h2>6. Interactive playground</h2>
+    <p>Tab to a control, type in inputs, press Enter on buttons.</p>
+    <p>
+        <button id="count-btn">Click me</button>
+        clicked <span id="click-count">0</span> times
+    </p>
+    <p>
+        Your name: <input id="name-input" placeholder="type, then Greet">
+        <button id="greet-btn">Greet</button>
+    </p>
+    <p id="greeting" style="color: seagreen"></p>
+
+    <h3>Terminal to-do list</h3>
+    <p>
+        <input id="todo-input" placeholder="something to do">
+        <button id="todo-add">Add</button>
+        <span id="todo-count">no items yet</span>
+    </p>
+    <ol id="todo-list"></ol>
+    <p><i>(press Enter in the input itself, or on the Add button)</i></p>
+
+    <hr>
+    <footer>
+        <p>rendered by text_browse — secrets are kept: <input type="password" value="hunter2"></p>
+    </footer>
+
+    <script>
+        var clicks = 0;
+        document.getElementById("count-btn").addEventListener("click", function(e) {
+            clicks = clicks + 1;
+            document.getElementById("click-count").innerHTML = clicks.toString();
+            e.preventDefault();
+        });
+
+        document.getElementById("greet-btn").addEventListener("click", function(e) {
+            var name = document.getElementById("name-input").getAttribute("value");
+            document.getElementById("greeting").innerHTML = name
+                ? "Hello, <b>" + name + "</b>! Welcome to the terminal."
+                : "...type a name first";
+            e.preventDefault();
+        });
+
+        var todos = [];
+        function addTodo(e) {
+            var input = document.getElementById("todo-input");
+            var text = input.getAttribute("value");
+            if (text) {
+                todos.push(text);
+                var items = "";
+                for (var i = 0; i < todos.length; i++) {
+                    items += "<li>" + todos[i] + "</li>";
+                }
+                document.getElementById("todo-list").innerHTML = items;
+                document.getElementById("todo-count").innerHTML =
+                    todos.length + (todos.length == 1 ? " item" : " items");
+                input.setAttribute("value", "");
+            }
+            e.preventDefault();
+        }
+        document.getElementById("todo-input").addEventListener("click", addTodo);
+        document.getElementById("todo-add").addEventListener("click", addTodo);
+        console.log("gauntlet script loaded");
+    </script>
+</body>
 </html>

@@ -18,7 +18,7 @@ Node.prototype.getAttribute = function(attr) {
     return call_python("getAttribute", this.handle, attr);
 };
 Node.prototype.setAttribute = function(attr, value) {
-    return call_python("getAttribute", this.handle, attr, value);
+    return call_python("setAttribute", this.handle, attr, value);
 };
 Node.prototype.hasAttribute = function(attr) {
     return this.getAttribute(attr) !== null;
@@ -28,7 +28,7 @@ Node.prototype.getElementsByTagName = function(tag) {
 };
 Object.defineProperty(Node.prototype, "id", {
     set: function(a) {
-        return this.setAttribute("id", tag);
+        return this.setAttribute("id", a);
     },
     get: function() {
         return this.getAttribute("id");
@@ -36,7 +36,7 @@ Object.defineProperty(Node.prototype, "id", {
 });
 Object.defineProperty(Node.prototype, "className", {
     set: function(s) {
-        return this.setAttribute("class", tag);
+        return this.setAttribute("class", s);
     },
     get: function() {
         return this.getAttribute("class");
@@ -52,7 +52,7 @@ Object.defineProperty(Node.prototype, 'innerHTML', {
         call_python("innerHTML_set", this.handle, s.toString());
     },
     get: function() {
-        call_python("innerHTML_get", this.handle);
+        return call_python("innerHTML_get", this.handle);
     }
 })
 
