@@ -84,3 +84,11 @@ class JSContext:
     def innerHTML_get(self, handle):
         elt = self.handle_to_node[handle]
         return "".join(node.to_html() for node in elt.children)
+    
+    def XMLHttpRequest_send(self, method, url, body):
+        full_url = self.tab.url.resolve(url)
+        if not self.tab.allowed_request(full_url):
+            raise Exception("Cross-origin XHR blocked by CSP")
+        url.body = body
+        headers, out = full_url.request(cross_origin=full_url.host != self.tab.url.host)
+        return out

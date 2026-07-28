@@ -60,8 +60,16 @@ class Tab:
         self.focus = None
         self.url = url
         self.scroll = 0
-        body = url.request()
+        headers, body = url.request(cross_origin=url.host != self.url.host)
         self.nodes = parser.HTMLParser(body).parse()
+
+        self.allowed_origins = None
+        if "content-security-policy" in headers:
+            csp = headers["content-security-policy"].split()
+            if len(csp) > 0 and csp[0] == "default-src":
+                self.allowed_origins = []
+                for origin in csp[1:]:
+                    self.allowed_origins.append(url.URL(origin).origin())
 
         scripts = [node for node
                    in layout.tree_to_list(self.nodes, [])
@@ -71,8 +79,12 @@ class Tab:
         for script in scripts:
             if "src" in script.attributes:
                 script_url = url.resolve(script.attributes["src"])
+                if not self.allowed_request(script_url):
+                    # log csp breach
+                    js.log_file.write(f"CSP blocked script load from {script_url}\n")
+                    continue
                 try:
-                    body = script_url.request()
+                    _, body = script_url.request(cross_origin=script_url.host != self.url.host)
                 except:
                     continue
             else:
@@ -90,7 +102,7 @@ class Tab:
         for link in links:
             style_url = url.resolve(link)
             try:
-                body = style_url.request()
+                _, body = style_url.request(cross_origin=style_url.host != self.url.host)
             except:
                 continue
             author_rules.extend(css.CSSParser(body).parse())
@@ -108,7 +120,7 @@ class Tab:
 
     def activate(self, elt: parser.HTMLNode):
         if self.js.dispatch_event("click", elt): return
-        
+
         if elt.tag == "a" and "href" in elt.attributes:
             url = self.url.resolve(elt.attributes["href"])
             return self.load(url)
@@ -199,6 +211,10 @@ class Tab:
         url.method = elt.attributes.get("method", "get")
         
         self.load(url)
+
+    def allowed_request(self, url):
+        return self.allowed_origins == None or \
+            url.origin() in self.allowed_origins
 
     def loop(self):
         if self.scroll < 0:
