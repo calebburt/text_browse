@@ -291,8 +291,7 @@ class LineLayout:
         text_align = self.node.style.get("text-align", "left")
 
         if text_align in ("center", "right"):
-            # total width of all words including spaces between them
-            total_width = sum(len(child.word) + 1 for child in self.children) - 1
+            total_width = self.children[-1].x + self.children[-1].width - self.children[0].x
 
             if text_align == "center":
                 offset = (self.width - total_width) // 2
@@ -362,18 +361,19 @@ class TextLayout:
         return [draw.DrawText(self.x, self.y, self.word, style, color_to_tuple(bgcolor), color_to_tuple(color))]
 
 class InputLayout:
-    def __init__(self, node, parent, previous):
+    def __init__(self, node, parent, previous, spacing=1):
         self.node: parser.HTMLNode = node
         self.children = []
         self.parent = parent
         self.previous = previous
+        self.spacing = spacing
         self.x, self.y = None, None
 
     def layout(self):
         self.width = INPUT_WIDTH
 
         if self.previous:
-            self.x = self.previous.x + 1 + self.previous.width
+            self.x = self.previous.x + self.previous.width + self.spacing
         else:
             self.x = self.parent.x
 
@@ -450,9 +450,14 @@ class BlockLayout:
             previous = None
             # a run of consecutive inline-level siblings shares one anonymous box
             for is_block, group in itertools.groupby(shown, lambda c: display_type(c) == "block"):
-                for node in group if is_block else [self.node]:
-                    previous = BlockLayout(node, self, previous,
-                                           inline_nodes=None if is_block else list(group))
+                run = list(group)
+                if is_block:
+                    for child in run:
+                        previous = BlockLayout(child, self, previous)
+                        self.children.append(previous)
+                # whitespace between block siblings makes no box of its own
+                elif not all(isinstance(n, parser.Text) and n.text.isspace() for n in run):
+                    previous = BlockLayout(self.node, self, previous, inline_nodes=run)
                     self.children.append(previous)
         else:
             self.new_line()
@@ -499,9 +504,17 @@ class BlockLayout:
     def text(self, node: parser.Text):
         if node.style.get("white-space", "normal").startswith("pre"):
             self.pre_text(node)
-        else:
-            for word in node.text.split():
-                self.word(node, word)
+            return
+        # a space renders between two words only when the source has
+        # whitespace between them; <b>Dave</b>! stays "Dave!"
+        words = node.text.split()
+        if words and node.text[0].isspace():
+            self.pending_space = True
+        for i, word in enumerate(words):
+            if i: self.pending_space = True
+            self.word(node, word)
+        if not words or node.text[-1].isspace():
+            self.pending_space = True
 
     def pre_text(self, node: parser.Text):
         lines = node.text.replace("\r\n", "\n").replace("\r", "\n").split("\n")
@@ -522,30 +535,25 @@ class BlockLayout:
             self.cursor_x += len(line)
 
     def word(self, node: parser.HTMLNode, word: str):
-        toks = word.split()
-        for word in toks:
-            w = len(word)
-            if self.cursor_x > 0 and self.cursor_x + w + 1 > self.width:
-                self.new_line()
-            self.cursor_x += w + 1
-            line = self.children[-1]
-            previous_word = line.children[-1] if line.children else None
-            text = TextLayout(node, word, line, previous_word)
-            line.children.append(text)
+        self.place(node, len(word), lambda line, prev, space: TextLayout(node, word, line, prev, spacing=space))
 
     def input(self, node: parser.HTMLNode):
-        w = INPUT_WIDTH
-        if self.cursor_x + w > self.width:
-            self.new_line()
-        line = self.children[-1]
-        previous_word = line.children[-1] if line.children else None
-        input = InputLayout(node, line, previous_word)
-        line.children.append(input)
+        self.place(node, INPUT_WIDTH, lambda line, prev, space: InputLayout(node, line, prev, spacing=space))
 
-        self.cursor_x += w + 1
+    def place(self, node, w, make):
+        space = 1 if self.pending_space and self.cursor_x > 0 else 0
+        if self.cursor_x > 0 and self.cursor_x + space + w > self.width:
+            self.new_line()
+            space = 0
+        line = self.children[-1]
+        previous = line.children[-1] if line.children else None
+        line.children.append(make(line, previous, space))
+        self.cursor_x += space + w
+        self.pending_space = False
 
     def new_line(self):
         self.cursor_x = 0
+        self.pending_space = False
         last_line = self.children[-1] if self.children else None
         new_line = LineLayout(self.node, self, last_line)
         self.children.append(new_line)

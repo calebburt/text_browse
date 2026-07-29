@@ -90,9 +90,10 @@ class HTMLParser:
         return self.finish()
     def add_text(self, text: str):
         if text.isspace():
-            # whitespace is significant inside <pre> (newlines, indentation
-            # between highlighted spans); elsewhere it's dropped
-            if not any(isinstance(node, Element) and node.tag == "pre"
+            # whitespace between tags is significant inside the body (it
+            # separates inline elements) and inside <pre>; outside the body
+            # keeping it would confuse implicit tag insertion
+            if not any(isinstance(node, Element) and node.tag in ("body", "pre")
                        for node in self.unfinished):
                 return
         self.implicit_tags(None)

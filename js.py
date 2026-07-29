@@ -30,15 +30,19 @@ class JSContext:
         self.interp.export_function("innerHTML_get", self.innerHTML_get)
         self.interp.export_function("innerHTML_set", self.innerHTML_set)
         self.interp.export_function("setTimeout", self.setTimeout)
+        self.interp.export_function("requestAnimationFrame", self.requestAnimationFrame)
 
         self.interp.evaljs(RUNTIME_JS)
 
     def run(self, code):
+        self.tab.measure.time("script")
         try:
             return self.interp.evaljs(code)
         except Exception as e:
             log_file.write(f"JS Error: {e}\nFor code: {code}\n")
             return None
+        finally:
+            self.tab.measure.stop("script")
 
 
     def get_handle(self, elt):
@@ -79,7 +83,7 @@ class JSContext:
     def setAttribute(self, handle, attr, value):
         elt = self.handle_to_node[handle]
         elt.attributes[attr] = value
-        self.tab.render()
+        self.tab.set_needs_render()
 
     def innerHTML_set(self, handle, s):
         doc = parser.HTMLParser("<html><body>" + s + "</body></html>").parse()
@@ -88,7 +92,7 @@ class JSContext:
         elt.children = new_nodes
         for child in elt.children:
             child.parent = elt
-        self.tab.render()
+        self.tab.set_needs_render()
     def innerHTML_get(self, handle):
         elt = self.handle_to_node[handle]
         return "".join(node.to_html() for node in elt.children)
@@ -115,6 +119,10 @@ class JSContext:
             return run_load()
         else:
             threading.Thread(target=run_load).start()
+
+    def requestAnimationFrame(self):
+        if self.discarded: return
+        self.tab.browser.schedule_animation_frame()
 
     def dispatch_settimeout(self, handle):
         if self.discarded: return

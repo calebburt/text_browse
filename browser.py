@@ -17,7 +17,7 @@ class Chrome:
     def paint(self):
         cmds = []
         cmds.append(draw.DrawRect(0, 0, display.size[0], 1, (0, 0, 1)))
-        cmds.append(draw.DrawText(0, 0, self.address_bar if self.focus == "address" else str(self.browser.active_tab.url) if self.browser.active_tab else "", (), (0, 0, 1), (1, 1, 1)))
+        cmds.append(draw.DrawText(0, 0, self.address_bar if self.focus == "address" else str(self.browser.active_tab.url or "") if self.browser.active_tab else "", (), (0, 0, 1), (1, 1, 1)))
         return cmds
     
     def focus_address_bar(self):
@@ -33,7 +33,9 @@ class Chrome:
                 display.cur((0, 0))
                 display.p("\033[K")
             elif key in ["\012", "\015"]:
-                self.browser.active_tab.load(url.URL(self.address_bar))
+                # navigation runs on the tab's main thread, like all tab work
+                self.browser.schedule_tab_task(
+                    tasks.Task(self.browser.active_tab.load, url.URL(self.address_bar)))
                 self.browser._set_tab_focus()
             else:
                 self.address_bar += key
@@ -45,57 +47,84 @@ class Browser:
         self.active_tab = None
         self.focus = None
         self.chrome = Chrome(self)
+        self.measure = tasks.MeasureTime()
+        self.draw_lock = threading.Lock()  # draw runs on both threads
         display.p("\033[?1049h") # Switch to alternate screen buffer
         display.cur((0, 0))
         self.animation_timer = None
-    
+
     def loop(self):
         display.hide_cursor()
         while True:
             key = display.read_key()
-            if key in ["\033[A", "\033[B", "\011", "\033[Z", "\003"]:
-                self._set_tab_focus()
             match key:
+                case "\033[A" | "\033[B":
+                    # threaded scrolling: just an offset into the last frame's
+                    # display list, so it never waits on the main thread
+                    self._set_tab_focus()
+                    self.active_tab.scroll += 1 if key == "\033[B" else -1
+                    self.draw()
                 case "\014":
                     #address bar
                     self.focus = self.chrome
                     self.chrome.focus_address_bar()
                 case "\033[1;5D":
                     #back
-                    self.active_tab.go_back()
+                    self.schedule_tab_task(tasks.Task(self.active_tab.go_back))
                 case "q" | "\003":
-                    display.show_cursor()
-                    display.p("\033[?1049l") # Switch back to normal screen buffer
+                    self.quit()
                     return
+                case "\011" | "\033[Z":
+                    self._set_tab_focus()
+                    self.schedule_tab_task(tasks.Task(self.active_tab.handle_key, key))
                 case _:
-                    self.focus.handle_key(key) if self.focus else None
-            self.active_tab.loop()
-            self.draw()
-    
+                    if self.focus == self.chrome:
+                        self.chrome.handle_key(key)
+                        self.draw()
+                    elif self.focus:
+                        self.schedule_tab_task(tasks.Task(self.active_tab.handle_key, key))
+
+    def quit(self):
+        for tab_ in self.tabs:
+            tab_.task_runner.set_needs_quit()
+        if self.animation_timer:
+            self.animation_timer.cancel()
+        self.measure.finish()
+        display.show_cursor()
+        display.p("\033[?1049l") # Switch back to normal screen buffer
+
+    def schedule_tab_task(self, task):
+        self.active_tab.task_runner.schedule_task(task)
+        self.schedule_animation_frame()  # a frame commits whatever the task changed
+
     def draw(self):
-        display.reset()
-        self.active_tab.draw(1)
-        for cmd in self.chrome.paint():
-            cmd.execute(0)
-        display.render()
-    
+        with self.draw_lock:
+            self.measure.time("draw")
+            display.reset()
+            self.active_tab.draw(1)
+            for cmd in self.chrome.paint():
+                cmd.execute(0)
+            display.render()
+            self.measure.stop("draw")
+
     def new_tab(self, url):
-        new_tab = tab.Tab(display.size[1] - 1)
-        new_tab.load(url)
+        new_tab = tab.Tab(self, display.size[1] - 1)
         self.tabs.append(new_tab)
         self.active_tab = new_tab
         self.focus = self.active_tab
-        self.draw()
+        new_tab.task_runner.start_thread()
+        new_tab.task_runner.schedule_task(tasks.Task(new_tab.load, url))
 
     def schedule_animation_frame(self):
         def callback():
-            active_tab = self.active_tab
-            task = tasks.Task(active_tab.render)
-            active_tab.task_runner.schedule_task(task)
             self.animation_timer = None
+            active_tab = self.active_tab
+            task = tasks.Task(active_tab.run_animation_frame)
+            active_tab.task_runner.schedule_task(task)
         if not self.animation_timer:
             self.animation_timer = \
                 threading.Timer(REFRESH_RATE_SEC, callback)
+            self.animation_timer.daemon = True
             self.animation_timer.start()
 
     def _set_tab_focus(self):

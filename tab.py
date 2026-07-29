@@ -35,7 +35,9 @@ def is_focusable(node):
     return False
 
 class Tab:
-    def __init__(self, tab_height):
+    def __init__(self, browser, tab_height):
+        self.browser = browser
+        self.measure: tasks.MeasureTime = browser.measure
         self.tab_height = tab_height
         self.scroll = 0
         self.focus = None
@@ -43,6 +45,22 @@ class Tab:
         self.url: url.URL = None
         self.history = []
         self.task_runner = tasks.TaskRunner(self)
+        self.needs_render = False
+        self.document = None
+        self.display_list = []
+
+    def set_needs_render(self):
+        self.needs_render = True
+        self.browser.schedule_animation_frame()
+
+    def run_animation_frame(self):
+        self.measure.time("animation_frame")
+        if self.js:
+            self.js.run("__runRAFHandlers()")
+        if self.needs_render:
+            self.render()
+        self.measure.stop("animation_frame")
+        self.browser.draw()
 
     def draw(self, offset):
         self.loop()
@@ -58,11 +76,14 @@ class Tab:
             self.load(back)
 
     def load(self, url_: url.URL):
-        self.history.append(url)
+        self.task_runner.clear_pending_tasks()  # stale timers/frames for the old page
+        self.history.append(url_)
         self.focus = None
+        # cross-origin relative to the page we're navigating away from
+        cross_origin = self.url is not None and url_.host != self.url.host
         self.url = url_
         self.scroll = 0
-        headers, body = url_.request(cross_origin=url_.host != self.url.host)
+        headers, body = url_.request(cross_origin=cross_origin)
         self.nodes = parser.HTMLParser(body).parse()
 
         self.allowed_origins = None
@@ -117,13 +138,20 @@ class Tab:
         self.rules = sorted(DEFAULT_STYLE_SHEET, key=cascade_priority) \
                    + sorted(author_rules, key=cascade_priority)
         self.render()
+        self.browser.schedule_animation_frame()
 
     def render(self):
+        self.measure.time("render")
+        self.needs_render = False
         css.style(self.nodes, self.rules)
-        self.document = layout.DocumentLayout(self.nodes)
-        self.document.layout()
-        self.display_list = []
-        layout.paint_tree(self.document, self.display_list)
+        document = layout.DocumentLayout(self.nodes)
+        document.layout()
+        display_list = []
+        layout.paint_tree(document, display_list)
+        # swap in atomically: the input thread may be drawing concurrently
+        self.document = document
+        self.display_list = display_list
+        self.measure.stop("render")
 
     def activate(self, elt: parser.HTMLNode):
         if self.js.dispatch_event("click", elt): return
@@ -226,16 +254,11 @@ class Tab:
     def loop(self):
         if self.scroll < 0:
             self.scroll = 0
-        if self.scroll > self.document.height - self.tab_height:
+        if self.document and self.scroll > self.document.height - self.tab_height:
             self.scroll = self.document.height - self.tab_height
-        self.task_runner.run()
 
     def handle_key(self, key):
         match key:
-            case "\033[A":
-                self.scroll -= 1
-            case "\033[B":
-                self.scroll += 1
             case "\012" | "\015":
                 self.enter()
             case "\011":
@@ -253,11 +276,8 @@ class Tab:
                         self.focus.attributes["value"] = ""
                     if key == "\010" or key == "\177":
                         self.focus.attributes["value"] = self.focus.attributes["value"][:-1]
-                        display.p("\033[K")
                     else:
                         self.focus.attributes["value"] += key
-                    display.p("\a")
-                    self.render()
-                    # display.cur((self.focus.layout.x + len(self.focus.attributes["value"]), self.focus.layout.y - self.scroll))
+                    self.set_needs_render()
                 elif key == " ":
                     self.scroll += 10

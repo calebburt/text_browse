@@ -99,11 +99,11 @@ class URL:
         self.params: dict[str, str] = params
         self.method: str = method.lower()
 
-    def request(self, cross_origin: bool = False) -> str:
+    def request(self, cross_origin: bool = False) -> tuple[dict, str]:
         global COOKIE_JAR
 
         if self.scheme == "file":
-            return open(self.path).read()
+            return {}, open(self.path).read()
 
         send_cookies = filter_cookies_for_request(self, cross_origin)
 

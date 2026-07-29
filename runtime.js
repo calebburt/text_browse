@@ -1,3 +1,10 @@
+// BROWSER ENV
+
+var window = this;
+
+/* -------------------------
+   EVENTS
+------------------------- */
 LISTENERS = {}
 
 function Node(handle) {
@@ -140,6 +147,24 @@ function setTimeout(callback, time_delta) {
 function __runSetTimeout(handle) {
     var callback = SET_TIMEOUT_REQUESTS[handle]
     callback();
+}
+
+/* ---------------------------
+   ANIMATION FRAMES
+--------------------------- */
+RAF_LISTENERS = [];
+
+function requestAnimationFrame(fn) {
+    RAF_LISTENERS.push(fn);
+    call_python("requestAnimationFrame");
+}
+
+function __runRAFHandlers() {
+    var handlers = RAF_LISTENERS;
+    RAF_LISTENERS = [];
+    for (var i = 0; i < handlers.length; i++) {
+        handlers[i]();
+    }
 }
 
 /* ---------------------------
