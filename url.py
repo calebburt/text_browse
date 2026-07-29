@@ -90,16 +90,13 @@ def filter_cookies_for_request(url_obj: "URL", cross_origin: bool) -> requests.c
 
 
 class URL:
-    def __init__(self, url: str, params: dict[str, str] | None = None, method: str = "get"):
-        if params is None:
-            params = {}
+    def __init__(self, url: str, params: dict[str, str] = {}, method: str = "get"):
         self.scheme, url = url.split("://", 1)
         if "/" not in url:
             url = url + "/"
         self.host, url = url.split("/", 1)
         self.path = "/" + url
         self.params: dict[str, str] = params
-        self.body: str | None = None
         self.method: str = method.lower()
 
     def request(self, cross_origin: bool = False) -> str:
@@ -142,6 +139,9 @@ class URL:
             return URL(self.scheme + ":" + url)
         else:
             return URL(self.scheme + "://" + self.host + url)
+
+    def origin(self):
+        return self.host
 
     def __str__(self) -> str:
         return f"{self.scheme}://{self.host}{self.path}"

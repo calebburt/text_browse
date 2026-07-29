@@ -4,6 +4,7 @@ import display
 import css
 import url
 import js
+import tasks
 
 DEFAULT_STYLE_SHEET = css.CSSParser(open("browser.css").read()).parse()
 
@@ -41,6 +42,7 @@ class Tab:
         self.js: js.JSContext = None
         self.url: url.URL = None
         self.history = []
+        self.task_runner = tasks.TaskRunner(self)
 
     def draw(self, offset):
         self.loop()
@@ -55,12 +57,12 @@ class Tab:
             back = self.history.pop()
             self.load(back)
 
-    def load(self, url: url.URL):
+    def load(self, url_: url.URL):
         self.history.append(url)
         self.focus = None
-        self.url = url
+        self.url = url_
         self.scroll = 0
-        headers, body = url.request(cross_origin=url.host != self.url.host)
+        headers, body = url_.request(cross_origin=url_.host != self.url.host)
         self.nodes = parser.HTMLParser(body).parse()
 
         self.allowed_origins = None
@@ -69,16 +71,20 @@ class Tab:
             if len(csp) > 0 and csp[0] == "default-src":
                 self.allowed_origins = []
                 for origin in csp[1:]:
-                    self.allowed_origins.append(url.URL(origin).origin())
+                    try:
+                        self.allowed_origins.append(url.URL(origin).origin())
+                    except:
+                        pass
 
         scripts = [node for node
                    in layout.tree_to_list(self.nodes, [])
                    if isinstance(node, parser.Element)
                    and node.tag == "script"]
+        if self.js: self.js.discarded = True
         self.js = js.JSContext(self) # new context for every page load
         for script in scripts:
             if "src" in script.attributes:
-                script_url = url.resolve(script.attributes["src"])
+                script_url = url_.resolve(script.attributes["src"])
                 if not self.allowed_request(script_url):
                     # log csp breach
                     js.log_file.write(f"CSP blocked script load from {script_url}\n")
@@ -89,8 +95,9 @@ class Tab:
                     continue
             else:
                 body = script.children[0].text # text child
-
-            self.js.run(body)
+            
+            task = tasks.Task(self.js.run, body)
+            self.task_runner.schedule_task(task)
 
         author_rules = []
         links = [node.attributes["href"]
@@ -100,7 +107,7 @@ class Tab:
              and node.attributes.get("rel") == "stylesheet"
              and "href" in node.attributes]
         for link in links:
-            style_url = url.resolve(link)
+            style_url = url_.resolve(link)
             try:
                 _, body = style_url.request(cross_origin=style_url.host != self.url.host)
             except:
@@ -221,6 +228,7 @@ class Tab:
             self.scroll = 0
         if self.scroll > self.document.height - self.tab_height:
             self.scroll = self.document.height - self.tab_height
+        self.task_runner.run()
 
     def handle_key(self, key):
         match key:

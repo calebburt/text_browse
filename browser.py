@@ -2,6 +2,11 @@ import display
 import tab
 import draw
 import url
+import tasks
+
+import threading
+
+REFRESH_RATE_SEC = 0.033
 
 class Chrome:
     def __init__(self, browser):
@@ -42,6 +47,7 @@ class Browser:
         self.chrome = Chrome(self)
         display.p("\033[?1049h") # Switch to alternate screen buffer
         display.cur((0, 0))
+        self.animation_timer = None
     
     def loop(self):
         display.hide_cursor()
@@ -80,6 +86,17 @@ class Browser:
         self.active_tab = new_tab
         self.focus = self.active_tab
         self.draw()
+
+    def schedule_animation_frame(self):
+        def callback():
+            active_tab = self.active_tab
+            task = tasks.Task(active_tab.render)
+            active_tab.task_runner.schedule_task(task)
+            self.animation_timer = None
+        if not self.animation_timer:
+            self.animation_timer = \
+                threading.Timer(REFRESH_RATE_SEC, callback)
+            self.animation_timer.start()
 
     def _set_tab_focus(self):
         display.hide_cursor()
