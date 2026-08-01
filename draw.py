@@ -27,6 +27,11 @@ class DrawText:
     def execute(self, scroll):
         display.draw_text((self.left, self.top - scroll), self.text, style=self.font, bg=self.bg, color=self.color)
 
+    def translate(self, x, y):
+        self.left += x
+        self.top += y
+        self.bottom += y
+
 class DrawRect:
     def __init__(self, x1, y1, x2, y2, color):
         self.top = y1
@@ -41,3 +46,9 @@ class DrawRect:
         width = max(0, self.right - self.left)
         height = max(0, self.bottom - self.top)
         display.draw_rect((x, y), (width, height), self.color)
+
+    def translate(self, x, y):
+        self.left += x
+        self.right += x
+        self.top += y
+        self.bottom += y

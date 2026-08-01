@@ -1,5 +1,7 @@
 import parser
 
+FRAME_TIME_SEC = 0.033
+
 INHERITED_PROPERTIES = {
     "font-size": "16px",
     "font-style": "normal",
@@ -239,8 +241,53 @@ class CSSParser:
                 self.i += 1
         return None
 
-def style(node: parser.HTMLNode, rules):
+class NumericAnimation:
+    def __init__(self, old_value, new_value, num_frames):
+        self.old_value = float(old_value)
+        self.new_value = float(new_value)
+        self.num_frames = num_frames
+        self.done = False
+
+        self.frame_count = 1
+        total_change = self.new_value - self.old_value
+        self.change_per_frame = total_change / num_frames
+
+    def animate(self):
+        if self.done: return
+        self.frame_count += 1
+        if self.frame_count >= self.num_frames:
+            self.done = True
+            return str(self.new_value)
+        current_value = self.old_value + \
+            self.change_per_frame * self.frame_count
+        return str(current_value)
+
+def parse_transition(value):
+    properties = {}
+    if not value: return properties
+    for item in value.split(","):
+        property, duration = item.split(" ", 1)
+        frames = max(1, round(float(duration[:-1]) / FRAME_TIME_SEC))
+        properties[property] = frames
+    return properties
+
+def diff_styles(old_style, new_style):
+    transitions = {}
+    for property, num_frames in \
+        parse_transition(new_style.get("transition")).items():
+        if property not in old_style: continue
+        if property not in new_style: continue
+        old_value = old_style[property]
+        new_value = new_style[property]
+        if old_value == new_value: continue
+        transitions[property] = \
+            (old_value, new_value, num_frames)
+    return transitions
+
+def style(node: parser.HTMLNode, rules, tab):
+    old_style = node.style
     node.style = {}
+
     for property, default_value in INHERITED_PROPERTIES.items():
         if node.parent:
             node.style[property] = node.parent.style[property]
@@ -258,4 +305,15 @@ def style(node: parser.HTMLNode, rules):
         for property, value in node.inline_style.items():
             node.style[property] = value
     for child in node.children:
-        style(child, rules)
+        style(child, rules, tab)
+
+    if old_style:
+        transitions = diff_styles(old_style, node.style)
+        for property, (old_value, new_value, num_frames) \
+            in transitions.items():
+            if property == "opacity":
+                tab.set_needs_layout()
+                animation = NumericAnimation(
+                    old_value, new_value, num_frames)
+                node.animations[property] = animation
+                node.style[property] = animation.animate()

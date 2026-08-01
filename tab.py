@@ -45,20 +45,38 @@ class Tab:
         self.url: url.URL = None
         self.history = []
         self.task_runner = tasks.TaskRunner(self)
-        self.needs_render = False
+
+        self.needs_style = False
+        self.needs_layout = False
+        self.needs_paint = False
+
         self.document = None
         self.display_list = []
         self.layout_size = None
 
     def set_needs_render(self):
-        self.needs_render = True
+        self.needs_style = True
+        self.browser.schedule_animation_frame()
+
+    def set_needs_layout(self):
+        self.needs_layout = True
         self.browser.schedule_animation_frame()
 
     def run_animation_frame(self):
         self.measure.time("animation_frame")
         if self.js:
             self.js.run("__runRAFHandlers()")
-        if self.needs_render:
+
+        for node in layout.tree_to_list(self.nodes, []):
+            for (property_name, animation) in list(node.animations.items()):
+                value = animation.animate()
+                if value:
+                    node.style[property_name] = value
+                    self.set_needs_layout()
+                if animation.done:
+                    del node.animations[property_name]
+
+        if self.needs_style or self.needs_layout or self.needs_paint:
             self.render()
         self.measure.stop("animation_frame")
         self.browser.draw()
@@ -143,20 +161,31 @@ class Tab:
         # author origin beats user agent origin regardless of specificity
         self.rules = sorted(DEFAULT_STYLE_SHEET, key=cascade_priority) \
                    + sorted(author_rules, key=cascade_priority)
+        self.needs_style = True
         self.render()
         self.browser.schedule_animation_frame()
 
     def render(self):
         self.measure.time("render")
-        self.needs_render = False
-        css.style(self.nodes, self.rules)
-        document = layout.DocumentLayout(self.nodes)
-        document.layout()
-        display_list = []
-        layout.paint_tree(document, display_list)
-        # swap in atomically: the input thread may be drawing concurrently
-        self.document = document
-        self.display_list = display_list
+
+        if self.needs_style:
+            css.style(self.nodes, self.rules, self)
+            self.needs_style = False
+            self.needs_layout = True
+
+        if self.needs_layout:
+            self.document = layout.DocumentLayout(self.nodes)
+            self.document.layout()
+            self.needs_layout = False
+            self.needs_paint = True
+
+        if self.needs_paint:
+            display_list = []
+            layout.paint_tree(self.document, display_list)
+            # swap in atomically: the input thread may be drawing concurrently
+            self.display_list = display_list
+            self.needs_paint = False
+        
         self.measure.stop("render")
 
     def activate(self, elt: parser.HTMLNode):
@@ -227,6 +256,7 @@ class Tab:
         self.focus = new_focus
         self.focus.is_focused = True
 
+        self.needs_style = True
         self.render()
         self.scroll_to(self.focus)
 

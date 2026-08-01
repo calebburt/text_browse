@@ -1,4 +1,5 @@
 import itertools
+import re
 
 import display
 import parser
@@ -163,12 +164,51 @@ COLORS = {
     "yellowgreen": (0.604, 0.804, 0.196),
 }
 
-def paint_tree(layout_object, display_list):
+def width_to_chars(width):
+    """Convert a width in pixels to a width in characters, rounding down."""
+    return (width + display.CHAR_WIDTH - 1) // display.CHAR_WIDTH
+
+def height_to_lines(height):
+    """Convert a height in pixels to a height in lines, rounding down."""
+    return (height + display.CHAR_HEIGHT - 1) // display.CHAR_HEIGHT
+
+def parse_translate(value):
+    if not value: return 0, 0
+    match = re.fullmatch(r"translate\(([^)]*)\)", value.strip().casefold())
+    if not match: return 0, 0
+    values = match.group(1).replace(",", " ").split()
+    if len(values) not in (1, 2): return 0, 0
+
+    def pixels_to_chars(value, converter):
+        if not value.endswith("px"): return 0
+        pixels = float(value[:-2])
+        sign = -1 if pixels < 0 else 1
+        return sign * converter(abs(pixels))
+
+    try:
+        x = pixels_to_chars(values[0], width_to_chars)
+        y = pixels_to_chars(values[1], height_to_lines) if len(values) == 2 else 0
+        return x, y
+    except ValueError:
+        return 0, 0
+
+def paint_tree(layout_object, display_list, transformed_nodes=None):
+    if transformed_nodes is None:
+        transformed_nodes = set()
+    start = len(display_list)
     if layout_object.needs_paint():
         display_list.extend(layout_object.paint())
 
     for child in layout_object.children:
-        paint_tree(child, display_list)
+        paint_tree(child, display_list, transformed_nodes)
+
+    node = getattr(layout_object, "node", None)
+    style = getattr(node, "style", {})
+    x, y = parse_translate(style.get("transform"))
+    if node is not None and id(node) not in transformed_nodes:
+        transformed_nodes.add(id(node))
+        for command in display_list[start:]:
+            command.translate(x, y)
 
 def tree_to_list(tree, list):
     list.append(tree)

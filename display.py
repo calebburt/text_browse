@@ -83,6 +83,18 @@ def show_cursor():
 size: tuple[int, int] = shutil.get_terminal_size(fallback=(80, 24))
 display_list: list[tuple[tuple[int, int], tuple[float, float, float], tuple[int], str]] = []
 
+CHAR_WIDTH = 8
+CHAR_HEIGHT = 16
+
+def __getattr__(name):
+    if name == "width":
+        from layout import width_to_chars
+        return width_to_chars(size[0] * CHAR_WIDTH)
+    if name == "height":
+        from layout import height_to_lines
+        return height_to_lines(size[1] * CHAR_HEIGHT)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 def reset():
     global display_list
     display_list = []

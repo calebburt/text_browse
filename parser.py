@@ -5,6 +5,7 @@ class HTMLNode:
     parent: "HTMLNode"
     style: dict[str, str]
     is_focused: bool = False
+    animations: dict
 
     def to_html(self) -> str:
         raise NotImplementedError("Subclasses must implement to_html() method.")
@@ -14,6 +15,8 @@ class Text(HTMLNode):
         self.text: str = text
         self.children = []
         self.parent = parent
+        self.style = {}
+        self.animations = {}
 
     def to_html(self) -> str:
         return html.escape(self.text)
@@ -21,12 +24,15 @@ class Text(HTMLNode):
     def __repr__(self):
         return repr(self.text)
 
+
 class Element(HTMLNode):
     def __init__(self, tag, attributes, parent):
         self.tag: str = tag
         self.children = []
         self.attributes: dict[str, str] = attributes
         self.parent = parent
+        self.style = {}
+        self.animations = {}
         self.inline_style_text: str | None = None
         self.inline_style: dict[str, str] = {}
 
