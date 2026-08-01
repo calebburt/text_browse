@@ -4,8 +4,6 @@ import display
 import parser
 import draw
 
-WIDTH, HEIGHT = display.size[0], display.size[1]
-
 INPUT_WIDTH = 20
 
 BLOCK_ELEMENTS = [
@@ -236,6 +234,26 @@ def color_to_tuple(color: str):
     except:
         return None
 
+def effective_opacity(node):
+    opacity = 1.0
+    while node:
+        try:
+            opacity *= float(node.style.get("opacity", "1"))
+        except (TypeError, ValueError):
+            pass
+        node = node.parent
+    return max(0.0, min(1.0, opacity))
+
+def blend_with_background(color, background, opacity):
+    if color is None or opacity <= 0:
+        return None
+    if opacity >= 1:
+        return color
+    if background is None:
+        background = (1, 1, 1)
+    return tuple(round(bg + (fg - bg) * opacity, 3)
+                 for fg, bg in zip(color, background))
+
 class DocumentLayout:
     def __init__(self, node):
         self.node = node
@@ -245,7 +263,7 @@ class DocumentLayout:
     def layout(self):
         child = BlockLayout(self.node, self, None)
         self.children.append(child)
-        self.width = WIDTH
+        self.width = display.size[0]
         self.x = 0
         self.y = 0
         child.layout()
@@ -349,6 +367,10 @@ class TextLayout:
     def paint(self):
         color = self.node.style["color"]
         bgcolor = self.node.parent.style.get("background-color", "transparent")
+        opacity = effective_opacity(self.node)
+        if opacity <= 0:
+            return []
+        background = color_to_tuple(bgcolor)
         font = self.node.style.get("font-weight", "normal") == "bold", self.node.style.get("font-style", "normal") == "italic"
         style = []
         if font[0]:
@@ -358,7 +380,8 @@ class TextLayout:
         style += decoration_styles(self.node)
         if in_focused_node(self.node):
             style.append("inverse")
-        return [draw.DrawText(self.x, self.y, self.word, style, color_to_tuple(bgcolor), color_to_tuple(color))]
+        return [draw.DrawText(self.x, self.y, self.word, style, background,
+                              blend_with_background(color_to_tuple(color), background, opacity))]
 
 class InputLayout:
     def __init__(self, node, parent, previous, spacing=1):

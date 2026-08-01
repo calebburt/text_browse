@@ -31,6 +31,7 @@ class JSContext:
         self.interp.export_function("innerHTML_set", self.innerHTML_set)
         self.interp.export_function("setTimeout", self.setTimeout)
         self.interp.export_function("requestAnimationFrame", self.requestAnimationFrame)
+        self.interp.export_function("style_set", self.style_set)
 
         self.interp.evaljs(RUNTIME_JS)
 
@@ -83,6 +84,8 @@ class JSContext:
     def setAttribute(self, handle, attr, value):
         elt = self.handle_to_node[handle]
         elt.attributes[attr] = value
+        if attr == "style":
+            elt.inline_style_text = None
         self.tab.set_needs_render()
 
     def innerHTML_set(self, handle, s):
@@ -96,6 +99,13 @@ class JSContext:
     def innerHTML_get(self, handle):
         elt = self.handle_to_node[handle]
         return "".join(node.to_html() for node in elt.children)
+
+    def style_set(self, handle, s):
+        elt = self.handle_to_node[handle]
+        elt.attributes["style"] = s
+        elt.inline_style = css.CSSParser(s).body()
+        elt.inline_style_text = s
+        self.tab.set_needs_render()
 
     def dispatch_xhr_onload(self, out, handle):
         if self.discarded: return

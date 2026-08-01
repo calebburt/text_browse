@@ -48,6 +48,7 @@ class Tab:
         self.needs_render = False
         self.document = None
         self.display_list = []
+        self.layout_size = None
 
     def set_needs_render(self):
         self.needs_render = True
@@ -63,6 +64,11 @@ class Tab:
         self.browser.draw()
 
     def draw(self, offset):
+        layout_size = (display.size[0], display.size[1] - 1)
+        if self.layout_size != layout_size:
+            self.layout_size = layout_size
+            self.tab_height = layout_size[1]
+            self.set_needs_render()
         self.loop()
         for cmd in self.display_list:
             if cmd.top > self.scroll + self.tab_height: continue

@@ -27,6 +27,8 @@ class Element(HTMLNode):
         self.children = []
         self.attributes: dict[str, str] = attributes
         self.parent = parent
+        self.inline_style_text: str | None = None
+        self.inline_style: dict[str, str] = {}
 
     def to_html(self):
         return "<" + self.tag + "".join(f' {k}="{html.escape(v)}"' for k, v in self.attributes.items()) + ">" + \

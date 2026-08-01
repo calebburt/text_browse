@@ -1,3 +1,4 @@
 */*.pyc
 .cookies
 browser.log
+browser.trace

@@ -251,8 +251,11 @@ def style(node: parser.HTMLNode, rules):
         for property, value in body.items():
             node.style[property] = value
     if isinstance(node, parser.Element) and "style" in node.attributes:
-        pairs = CSSParser(node.attributes["style"]).body()
-        for property, value in pairs.items():
+        inline_style_text = node.attributes["style"]
+        if node.inline_style_text != inline_style_text:
+            node.inline_style = CSSParser(inline_style_text).body()
+            node.inline_style_text = inline_style_text
+        for property, value in node.inline_style.items():
             node.style[property] = value
     for child in node.children:
         style(child, rules)

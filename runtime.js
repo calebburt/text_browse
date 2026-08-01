@@ -62,6 +62,11 @@ Object.defineProperty(Node.prototype, 'innerHTML', {
         return call_python("innerHTML_get", this.handle);
     }
 })
+Object.defineProperty(Node.prototype, 'style', {
+    set: function(s) {
+        call_python("style_set", this.handle, s.toString());
+    }
+});
 
 /* ---------------------------
    EVENTS
