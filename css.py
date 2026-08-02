@@ -126,28 +126,28 @@ class CSSParser:
             raise Exception("Parsing error")
         self.i += 1
 
-    def value(self):
+    def value(self, until=";}"):
         start = self.i
         depth = 0
         while self.i < len(self.s):
             c = self.s[self.i]
             if c == "(":
                 depth += 1
-            elif c == ")":
+            elif c == ")" and ")" not in until:
                 depth -= 1
-            elif c in ";}" and depth == 0:
+            elif c in until and depth == 0:
                 break
             self.i += 1
         if not (self.i > start):
             raise Exception("Parsing error")
         return self.s[start:self.i].strip()
 
-    def pair(self):
+    def pair(self, until=";}"):
         prop = self.word()
         self.whitespace()
         self.literal(":")
         self.whitespace()
-        val = self.value()
+        val = self.value(until)
         return prop.casefold(), val
 
     def simple_selector(self, token):
@@ -227,9 +227,11 @@ class CSSParser:
     def parse(self):
         rules = []
         media = None
-        self.whitespace()
         while self.i < len(self.s):
             try:
+                self.whitespace()
+                if self.i >= len(self.s):
+                    break
                 if self.s[self.i] == "@" and not media:
                     prop, val = self.media_query()
                     if prop == "prefers-color-scheme" and \
@@ -293,7 +295,7 @@ def parse_transition(value):
     properties = {}
     if not value: return properties
     for item in value.split(","):
-        property, duration = item.split(" ", 1)
+        property, duration = item.strip().split(None, 1)
         frames = max(1, round(float(duration[:-1]) / FRAME_TIME_SEC))
         properties[property] = frames
     return properties

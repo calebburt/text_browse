@@ -53,9 +53,9 @@ class TaskRunner:
             if task:
                 try:
                     task.run()
-                except Exception as e:
-                    import js
-                    js.log_file.write(f"Task error: {e}\n")
+                except Exception:
+                    import js, traceback
+                    js.log_file.write(f"Task error:\n{traceback.format_exc()}\n")
                     js.log_file.flush()
 
 

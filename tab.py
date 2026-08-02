@@ -9,7 +9,7 @@ import tasks
 DEFAULT_STYLE_SHEET = css.CSSParser(open("browser.css").read()).parse()
 
 def cascade_priority(rule):
-    selector, body = rule
+    media, selector, body = rule
     return selector.priority
 
 def is_hidden(node):
@@ -50,10 +50,11 @@ class Tab:
         self.needs_layout = False
         self.needs_paint = False
 
+        self.nodes = None
         self.document = None
         self.display_list = []
         self.layout_size = None
-        
+
         self.dark_mode = False
 
     def set_needs_render(self):
@@ -69,7 +70,7 @@ class Tab:
         if self.js:
             self.js.run("__runRAFHandlers()")
 
-        for node in layout.tree_to_list(self.nodes, []):
+        for node in layout.tree_to_list(self.nodes, []) if self.nodes else []:
             for (property_name, animation) in list(node.animations.items()):
                 value = animation.animate()
                 if value:

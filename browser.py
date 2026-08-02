@@ -59,7 +59,8 @@ class Browser:
             key = display.read_key()
             match key:
                 case "\004":
-                    self.active_tabdark_mode = not self.active_tab.dark_mode
+                    self.active_tab.dark_mode = not self.active_tab.dark_mode
+                    self.active_tab.set_needs_render()  # restyle under the new scheme
                 case "\033[A" | "\033[B":
                     # threaded scrolling: just an offset into the last frame's
                     # display list, so it never waits on the main thread
@@ -116,6 +117,7 @@ class Browser:
         self.focus = self.active_tab
         new_tab.task_runner.start_thread()
         new_tab.task_runner.schedule_task(tasks.Task(new_tab.load, url))
+        self.schedule_animation_frame()  # paint chrome while the page loads
 
     def schedule_animation_frame(self):
         def callback():
