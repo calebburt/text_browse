@@ -27,12 +27,12 @@ class TagSelector(Selector):
 
     def matches(self, node: parser.HTMLNode):
         return isinstance(node, parser.Element) and self.tag == node.tag
-    
+
 class ClassSelector(Selector):
     def __init__(self, class_):
         self.class_: str = class_
         self.priority: int = 10
-    
+
     def matches(self, node: parser.HTMLNode):
         return isinstance(node, parser.Element) and "class" in node.attributes and self.class_ in node.attributes["class"].split()
 
@@ -46,12 +46,12 @@ class PseudoclassSelector(Selector):
             return node.is_focused
         else:
             return False
-    
+
 class IDSelector(Selector):
     def __init__(self, id):
         self.id: str = id
         self.priority: int = 10
-    
+
     def matches(self, node: parser.HTMLNode):
         return isinstance(node, parser.Element) and "id" in node.attributes and self.id == node.attributes["id"]
 
@@ -72,7 +72,7 @@ class SelectorSequence(Selector):
     def __init__(self, selectors):
         self.selectors: list[Selector] = selectors
         self.priority: int = sum([sel.priority for sel in self.selectors])
-    
+
     def matches(self, node: parser.HTMLNode):
         return all([selector.matches(node) for selector in self.selectors])
 
@@ -80,7 +80,7 @@ class SelectorList(Selector):
     def __init__(self, selectors):
         self.selectors: list[Selector] = selectors
         self.priority: int = sum([sel.priority for sel in self.selectors])
-    
+
     def matches(self, node: parser.HTMLNode):
         return any([selector.matches(node) for selector in self.selectors])
 
@@ -101,7 +101,7 @@ class CSSParser:
                 self.i += 1
             else:
                 break
-    
+
     def word(self):
         start = self.i
         while self.i < len(self.s):
@@ -112,7 +112,7 @@ class CSSParser:
         if not (self.i > start):
             raise Exception("Parsing error")
         return self.s[start:self.i]
-    
+
     def selector_word(self):
         # word() itself can't accept ":", pair() needs it to stop there
         word = self.word()
@@ -194,7 +194,18 @@ class CSSParser:
                 continue
             break
         return selectors[0] if len(selectors) == 1 else SelectorList(selectors)
-    
+
+    def media_query(self):
+        self.literal("@")
+        assert self.word() == "media"
+        self.whitespace()
+        self.literal("(")
+        self.whitespace()
+        prop, val = self.pair([")"])
+        self.whitespace()
+        self.literal(")")
+        return prop, val
+
     def body(self):
         pairs = {}
         while self.i < len(self.s) and self.s[self.i] != "}":
@@ -215,15 +226,31 @@ class CSSParser:
 
     def parse(self):
         rules = []
+        media = None
+        self.whitespace()
         while self.i < len(self.s):
             try:
-                self.whitespace()
-                selector = self.selector()
-                self.literal("{")
-                self.whitespace()
-                body = self.body()
-                self.literal("}")
-                rules.append((selector, body))
+                if self.s[self.i] == "@" and not media:
+                    prop, val = self.media_query()
+                    if prop == "prefers-color-scheme" and \
+                        val in ["dark", "light"]:
+                        media = val
+                    self.whitespace()
+                    self.literal("{")
+                    self.whitespace()
+                elif self.s[self.i] == "}" and media:
+                    self.literal("}")
+                    media = None
+                    self.whitespace()
+                else:
+                    selector = self.selector()
+                    self.whitespace()
+                    self.literal("{")
+                    self.whitespace()
+                    body = self.body()
+                    self.whitespace()
+                    self.literal("}")
+                    rules.append((media, selector, body))
             except Exception:
                 why = self.ignore_until(["}"])
                 if why == "}":
@@ -232,7 +259,7 @@ class CSSParser:
                 else:
                     break
         return rules
-    
+
     def ignore_until(self, chars):
         while self.i < len(self.s):
             if self.s[self.i] in chars:
@@ -293,7 +320,9 @@ def style(node: parser.HTMLNode, rules, tab):
             node.style[property] = node.parent.style[property]
         else:
             node.style[property] = default_value
-    for selector, body in rules:
+    for media, selector, body in rules:
+        if media:
+            if (media == "dark") != tab.dark_mode: continue
         if not selector.matches(node): continue
         for property, value in body.items():
             node.style[property] = value

@@ -136,3 +136,92 @@ section, article {
   background-color: #fafafa;
   color: #333;
 }
+
+@media (prefers-color-scheme: dark) {
+  body {
+    color: #eee;
+    background-color: #111;
+  }
+
+  /* Headings */
+  h1, h2, h3 {
+    color: #fff;
+  }
+
+  /* Links */
+  a {
+    color: #66aaff;
+  }
+
+  a:focus {
+    background-color: #444;
+  }
+
+  /* Code + preformatted */
+  pre, code {
+    background-color: #333;
+    color: #ddd;
+  }
+
+  /* Lists */
+  ul, ol {
+    color: #ddd;
+  }
+
+  /* Blockquotes */
+  blockquote {
+    background-color: #222;
+    color: #ccc;
+  }
+
+  /* Tables */
+  table {
+    background-color: #222;
+    color: #ddd;
+  }
+
+  th {
+    background-color: #333;
+  }
+
+  td {
+    background-color: #2a2a2a;
+  }
+
+  /* Forms */
+  textarea, input {
+    background-color: #333;
+    color: #eee;
+  }
+
+  textarea:focus, input:focus {
+    background-color: #444;
+  }
+
+  input:disabled, textarea:disabled {
+    background-color: #444;
+    color: #777;
+  }
+
+  select {
+    background-color: #333;
+    color: #eee;
+  }
+
+  /* Buttons */
+  button {
+    background-color: #555;
+    color: #fff;
+  }
+
+  /* Semantic sections */
+  header, footer {
+    background-color: #1a1a1a;
+    color: #ddd;
+  }
+
+  section, article {
+    background-color: #181818;
+    color: #ddd;
+  }
+}

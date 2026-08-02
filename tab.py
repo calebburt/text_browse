@@ -53,6 +53,8 @@ class Tab:
         self.document = None
         self.display_list = []
         self.layout_size = None
+        
+        self.dark_mode = False
 
     def set_needs_render(self):
         self.needs_style = True

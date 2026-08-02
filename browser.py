@@ -58,6 +58,8 @@ class Browser:
         while True:
             key = display.read_key()
             match key:
+                case "\004":
+                    self.active_tabdark_mode = not self.active_tab.dark_mode
                 case "\033[A" | "\033[B":
                     # threaded scrolling: just an offset into the last frame's
                     # display list, so it never waits on the main thread
