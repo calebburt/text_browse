@@ -5,6 +5,7 @@ import css
 import url
 import js
 import tasks
+import tempfile
 
 DEFAULT_STYLE_SHEET = css.CSSParser(open("browser.css").read()).parse()
 
@@ -111,6 +112,7 @@ class Tab:
         self.url = url_
         self.scroll = 0
         headers, body = url_.request(cross_origin=cross_origin)
+        body = body.decode("utf-8", errors="replace")
         self.nodes = parser.HTMLParser(body).parse()
 
         self.allowed_origins = None
@@ -128,6 +130,29 @@ class Tab:
                    in layout.tree_to_list(self.nodes, [])
                    if isinstance(node, parser.Element)
                    and node.tag == "script"]
+
+        images = [node
+            for node in layout.tree_to_list(self.nodes, [])
+            if isinstance(node, parser.Element)
+            and node.tag == "img"]
+        for img in images:
+            src = img.attributes.get("src", "")
+            image_url = url.resolve(src)
+            if not self.allowed_request(image_url):
+                # log csp breach
+                js.log_file.write(f"CSP blocked image load from {image_url}\n")
+                continue
+            try:
+                _, body = image_url.request(url)
+                temp_file = tempfile.NamedTemporaryFile(delete=False)
+                temp_file.write(body)
+                temp_file.flush()
+                img.image = temp_file.name
+            except Exception as e:
+                print("Image", img.attributes.get("src", ""),
+                    "crashed", e)
+                img.image = "broken_image.png"
+        
         if self.js: self.js.discarded = True
         self.js = js.JSContext(self) # new context for every page load
         for script in scripts:
@@ -139,6 +164,7 @@ class Tab:
                     continue
                 try:
                     _, body = script_url.request(cross_origin=script_url.host != self.url.host)
+                    body = body.decode("utf-8", errors="replace")
                 except:
                     continue
             else:
@@ -158,6 +184,7 @@ class Tab:
             style_url = url_.resolve(link)
             try:
                 _, body = style_url.request(cross_origin=style_url.host != self.url.host)
+                body = body.decode("utf-8", errors="replace")
             except:
                 continue
             author_rules.extend(css.CSSParser(body).parse())

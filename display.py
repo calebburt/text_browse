@@ -1,5 +1,6 @@
 import shutil
 import os, sys
+import sixel
 
 if os.name == "nt":
     import msvcrt
@@ -82,6 +83,7 @@ def show_cursor():
 
 size: tuple[int, int] = shutil.get_terminal_size(fallback=(80, 24))
 display_list: list[tuple[tuple[int, int], tuple[float, float, float], tuple[int], str]] = []
+image_list: list[tuple[str, int, int, int, int]] = []
 
 CHAR_WIDTH = 8
 CHAR_HEIGHT = 16
@@ -97,7 +99,9 @@ def __getattr__(name):
 
 def reset():
     global display_list
+    global image_list
     display_list = []
+    image_list = []
 
 def render():
     global size
@@ -118,6 +122,18 @@ def render():
         if bg:
             buf.append("\033[48;2;%d;%d;%dm" % tuple(int(v * 255) for v in bg))
         buf.append(text[:width - x])  # clip so the terminal never auto-wraps
+    for path, x, y, w, h in image_list:
+        if x < 0 or y < 0 or x >= width or y >= height:
+            continue
+        if x + w <= 0 or y + h <= 0:
+            continue
+        buf.append(f"\033[{y+1};{x+1}H\033[0m")
+        try:
+            img = sixel.load_image(path, w, 255, (0, 0, 0))
+        except OSError as e:
+            pass
+    
+        p(sixel.to_sixel(img))
     buf.append("\033[0m")
     buf.append("\033[?2026l")
     sys.stdout.write("".join(buf))
@@ -127,6 +143,8 @@ def render():
 def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=(), bg: tuple[float, float, float]=None):
     display_list.append((pos, color, bg, style, text))
 
+def draw_image(path: str, x: int, y: int, width: int, height: int):
+    image_list.append((path, x, y, width, height))
 
 def draw_rect(pos: tuple[int, int], size: tuple[int, int], color: tuple[float, float, float]=(1, 1, 1,)):
     if color != None:

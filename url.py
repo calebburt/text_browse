@@ -103,7 +103,7 @@ class URL:
         global COOKIE_JAR
 
         if self.scheme == "file":
-            return {}, open(self.path).read()
+            return {}, open(self.path, "rb").read()
 
         send_cookies = filter_cookies_for_request(self, cross_origin)
 
@@ -115,7 +115,6 @@ class URL:
 
         result = charset_normalizer.from_bytes(resp.content).best()
         content = result.output() if result else resp.content
-        content = content.decode("utf-8", errors="replace")
 
         COOKIE_JAR.update(resp.cookies)
         save_cookie_jar(COOKIE_JAR)

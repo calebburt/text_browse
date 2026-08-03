@@ -52,3 +52,18 @@ class DrawRect:
         self.right += x
         self.top += y
         self.bottom += y
+
+class DrawImage():
+    def __init__(self, image, x, y, width, height):
+        self.image = image
+        self.x = x
+        self.y = y
+        self.width = width
+        self.height = height
+
+    def execute(self, scroll):
+        display.draw_image(self.image, self.x, self.y - scroll, self.width, self.height)
+
+    def translate(self, x, y):
+        self.x += x
+        self.y += y
