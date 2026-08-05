@@ -49,6 +49,7 @@ class Browser:
         self.chrome = Chrome(self)
         self.measure = tasks.MeasureTime()
         self.draw_lock = threading.Lock()  # draw runs on both threads
+        display.detect_sixel()  # before anything else reads stdin
         display.p("\033[?1049h") # Switch to alternate screen buffer
         display.cur((0, 0))
         self.animation_timer = None

@@ -102,6 +102,39 @@ def _cell_size():
 
 CHAR_WIDTH, CHAR_HEIGHT = _cell_size()
 
+sixel_supported = False
+
+def detect_sixel():
+    """Ask the terminal (Primary Device Attributes) whether it renders sixel;
+    attribute 4 in the ESC[?...c reply means yes. Call once at startup,
+    before anything else reads stdin. TEXT_BROWSE_SIXEL=0/1 overrides."""
+    global sixel_supported
+    forced = os.environ.get("TEXT_BROWSE_SIXEL")
+    if forced is not None:
+        sixel_supported = forced == "1"
+        return sixel_supported
+    if os.name == "nt" or not sys.stdin.isatty() or not sys.stdout.isatty():
+        sixel_supported = False
+        return False
+    import termios, tty, select
+    fd = sys.stdin.fileno()
+    old = termios.tcgetattr(fd)
+    reply = b""
+    try:
+        tty.setraw(fd)
+        sys.stdout.write("\033[c")
+        sys.stdout.flush()
+        while not reply.endswith(b"c"):
+            r, _, _ = select.select([fd], [], [], 0.3)
+            if not r:
+                break
+            reply += os.read(fd, 64)
+    finally:
+        termios.tcsetattr(fd, termios.TCSADRAIN, old)
+    params = reply[reply.find(b"[?") + 2:-1].split(b";") if b"[?" in reply else []
+    sixel_supported = b"4" in params
+    return sixel_supported
+
 def __getattr__(name):
     if name == "width":
         from layout import width_to_chars
@@ -167,7 +200,7 @@ def render():
         if bg:
             buf.append("\033[48;2;%d;%d;%dm" % tuple(int(v * 255) for v in bg))
         buf.append(text[:width - x])  # clip so the terminal never auto-wraps
-    for path, x, y, w, h, bg in image_list:
+    for path, x, y, w, h, bg, alt in image_list:
         if x < 0 or x >= width or y >= height or y + h <= 0:
             continue
         # crop to the viewport: partially scrolled images draw their visible
@@ -175,6 +208,16 @@ def render():
         # the terminal scroll the whole screen)
         crop_top = max(0, -y)
         crop_rows = min(h, height - y) - crop_top
+        if not sixel_supported:
+            # same cells the image would occupy, no graphics work: a shaded
+            # box labeled with the image's alt text
+            label = "[%s]" % (alt or "image")
+            for row in range(crop_top, crop_top + crop_rows):
+                line = label.center(w, "░") if row == h // 2 else "░" * w
+                buf.append(f"\033[{y+row+1};{x+1}H\033[0m")
+                buf.append("\033[38;2;128;128;128m\033[48;2;%d;%d;%dm" % bg)
+                buf.append(line[:min(w, width - x)])
+            continue
         data = sixel_for(path, w, bg, crop_top, crop_rows)
         if data is None:
             continue
@@ -195,10 +238,10 @@ def render():
 def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=(), bg: tuple[float, float, float]=None):
     display_list.append((pos, color, bg, style, text))
 
-def draw_image(path: str, x: int, y: int, width: int, height: int, bg=(1, 1, 1)):
+def draw_image(path: str, x: int, y: int, width: int, height: int, bg=(1, 1, 1), alt=""):
     # bg arrives as 0-1 floats; store 0-255 ints (hashable cache key for sixel)
     bg = tuple(round(v * 255) for v in (bg or (1, 1, 1)))
-    image_list.append((path, x, y, width, height, bg))
+    image_list.append((path, x, y, width, height, bg, alt))
 
 def draw_rect(pos: tuple[int, int], size: tuple[int, int], color: tuple[float, float, float]=(1, 1, 1,)):
     if color != None:

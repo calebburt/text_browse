@@ -526,7 +526,8 @@ class ImageLayout(EmbedLayout):
         # composite transparency onto the page background: terminals disagree
         # about what shows through P2=1 sixel pixels (often their default bg)
         bg = color_to_tuple(self.node.style.get("background-color", "white")) or (1, 1, 1)
-        return [draw.DrawImage(path, self.x, self.y, self.width, self.height, bg)]
+        return [draw.DrawImage(path, self.x, self.y, self.width, self.height, bg,
+                               self.node.attributes.get("alt", ""))]
 
 class InputLayout(EmbedLayout):
     def __init__(self, node, parent, previous, spacing=1):

@@ -54,13 +54,14 @@ class DrawRect:
         self.bottom += y
 
 class DrawImage():
-    def __init__(self, image, x, y, width, height, bg=(1, 1, 1)):
+    def __init__(self, image, x, y, width, height, bg=(1, 1, 1), alt=""):
         self.image = image
         self.x = x
         self.y = y
         self.width = width
         self.height = height
         self.bg = bg
+        self.alt = alt
 
     # scroll culling reads top/bottom on every command
     @property
@@ -72,7 +73,7 @@ class DrawImage():
         return self.y + self.height
 
     def execute(self, scroll):
-        display.draw_image(self.image, self.x, self.y - scroll, self.width, self.height, self.bg)
+        display.draw_image(self.image, self.x, self.y - scroll, self.width, self.height, self.bg, self.alt)
 
     def translate(self, x, y):
         self.x += x
