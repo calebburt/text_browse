@@ -57,6 +57,17 @@ class Browser:
         display.hide_cursor()
         while True:
             key = display.read_key()
+            try:
+                self.handle_input(key)
+            except SystemExit:
+                return
+            except Exception:
+                # a bad frame must not kill the input thread
+                import traceback, js
+                js.log_file.write(f"Input error:\n{traceback.format_exc()}\n")
+                js.log_file.flush()
+
+    def handle_input(self, key):
             match key:
                 case "\004":
                     self.active_tab.dark_mode = not self.active_tab.dark_mode
@@ -76,7 +87,7 @@ class Browser:
                     self.schedule_tab_task(tasks.Task(self.active_tab.go_back))
                 case "q" | "\003":
                     self.quit()
-                    return
+                    raise SystemExit
                 case "\011" | "\033[Z":
                     self._set_tab_focus()
                     self.schedule_tab_task(tasks.Task(self.active_tab.handle_key, key))

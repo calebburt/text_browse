@@ -95,6 +95,10 @@ class JSContext:
         elt.children = new_nodes
         for child in elt.children:
             child.parent = elt
+        # scripts insert <img> nodes that load() never saw; fetch them in a
+        # separate task so the mutation itself returns quickly
+        self.tab.task_runner.schedule_task(
+            tasks.Task(self.tab.load_images, elt))
         self.tab.set_needs_render()
     def innerHTML_get(self, handle):
         elt = self.handle_to_node[handle]

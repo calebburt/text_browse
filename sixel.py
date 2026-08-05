@@ -19,7 +19,12 @@ def parse_color(s):
     return tuple(int(s[i:i + 2], 16) for i in (0, 2, 4))
 
 
-def load_image(path, width, colors, bg):
+def load_image(path, width, colors, bg, pad_multiple=None):
+    """Load and quantize an image for sixel output; alpha is flattened onto
+    bg. pad_multiple=(w, h) pads the canvas with bg up to the next multiple,
+    so a graphic explicitly paints every pixel of every terminal cell it
+    touches (terminals fill unpainted graphic area with their own default
+    background)."""
     img = Image.open(path)
     img.load()
 
@@ -37,6 +42,14 @@ def load_image(path, width, colors, bg):
     if width and img.width > width:
         height = max(1, round(img.height * width / img.width))
         img = img.resize((width, height), Image.LANCZOS)
+
+    if pad_multiple:
+        pw = -(-img.width // pad_multiple[0]) * pad_multiple[0]
+        ph = -(-img.height // pad_multiple[1]) * pad_multiple[1]
+        if (pw, ph) != img.size:
+            canvas = Image.new("RGB", (pw, ph), bg)
+            canvas.paste(img, (0, 0))
+            img = canvas
 
     # Palette mode: sixel colors are palette registers.
     return img.quantize(colors=colors, dither=Image.Dither.FLOYDSTEINBERG)

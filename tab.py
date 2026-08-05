@@ -1,3 +1,10 @@
+import base64
+import io
+import tempfile
+import urllib.parse
+
+from PIL import Image
+
 import layout
 import parser
 import display
@@ -5,7 +12,6 @@ import css
 import url
 import js
 import tasks
-import tempfile
 
 DEFAULT_STYLE_SHEET = css.CSSParser(open("browser.css").read()).parse()
 
@@ -117,42 +123,33 @@ class Tab:
 
         self.allowed_origins = None
         if "content-security-policy" in headers:
-            csp = headers["content-security-policy"].split()
-            if len(csp) > 0 and csp[0] == "default-src":
+            csp = next((directive.split()
+                        for directive in headers["content-security-policy"].split(";")
+                        if directive.split()[:1] == ["default-src"]), [])
+            if csp:
                 self.allowed_origins = []
                 for origin in csp[1:]:
-                    try:
-                        self.allowed_origins.append(url.URL(origin).origin())
-                    except:
-                        pass
+                    keyword = origin.strip("'").casefold()
+                    if keyword == "self":
+                        self.allowed_origins.append(url_.origin())
+                    elif origin.startswith("'"):
+                        continue  # 'none', 'unsafe-inline', nonces, hashes
+                    elif "://" in origin:
+                        try:
+                            self.allowed_origins.append(url.URL(origin).origin())
+                        except:
+                            pass
+                    elif "." in origin:
+                        # bare host source like cdn.example.com
+                        self.allowed_origins.append(origin.casefold())
 
         scripts = [node for node
                    in layout.tree_to_list(self.nodes, [])
                    if isinstance(node, parser.Element)
                    and node.tag == "script"]
 
-        images = [node
-            for node in layout.tree_to_list(self.nodes, [])
-            if isinstance(node, parser.Element)
-            and node.tag == "img"]
-        for img in images:
-            src = img.attributes.get("src", "")
-            image_url = url.resolve(src)
-            if not self.allowed_request(image_url):
-                # log csp breach
-                js.log_file.write(f"CSP blocked image load from {image_url}\n")
-                continue
-            try:
-                _, body = image_url.request(url)
-                temp_file = tempfile.NamedTemporaryFile(delete=False)
-                temp_file.write(body)
-                temp_file.flush()
-                img.image = temp_file.name
-            except Exception as e:
-                print("Image", img.attributes.get("src", ""),
-                    "crashed", e)
-                img.image = "broken_image.png"
-        
+        self.load_images(self.nodes)
+
         if self.js: self.js.discarded = True
         self.js = js.JSContext(self) # new context for every page load
         for script in scripts:
@@ -194,6 +191,45 @@ class Tab:
         self.needs_style = True
         self.render()
         self.browser.schedule_animation_frame()
+
+    def load_images(self, root):
+        """Fetch every <img> under root that hasn't been loaded yet. Runs at
+        page load and again for nodes scripts insert via innerHTML."""
+        images = [node
+            for node in layout.tree_to_list(root, [])
+            if isinstance(node, parser.Element)
+            and node.tag == "img" and not hasattr(node, "image")]
+        for img in images:
+            src = img.attributes.get("src", "")
+            if not src:
+                img.image = "broken_image.png"
+                continue
+            try:
+                if src.startswith("data:"):
+                    header, _, data = src.partition(",")
+                    if ";base64" in header:
+                        body = base64.b64decode(data)
+                    else:
+                        body = urllib.parse.unquote_to_bytes(data)
+                else:
+                    image_url = self.url.resolve(src)
+                    if not self.allowed_request(image_url):
+                        # log csp breach
+                        js.log_file.write(f"CSP blocked image load from {image_url}\n")
+                        img.image = "broken_image.png"
+                        continue
+                    _, body = image_url.request(cross_origin=image_url.host != self.url.host)
+                # reject non-raster payloads (404 pages, SVG) before painting
+                Image.open(io.BytesIO(body)).verify()
+                temp_file = tempfile.NamedTemporaryFile(delete=False)
+                temp_file.write(body)
+                temp_file.flush()
+                img.image = temp_file.name
+            except Exception as e:
+                js.log_file.write(f"Image {src[:80]} failed: {e}\n")
+                img.image = "broken_image.png"
+        if images:
+            self.set_needs_render()
 
     def render(self):
         self.measure.time("render")
@@ -254,6 +290,7 @@ class Tab:
             self.scroll = min(top, bottom - self.tab_height)
 
     def advance_tab(self, backward=False):
+        if not self.nodes or not self.document: return  # still loading
         focusable_nodes = [node
             for node in layout.tree_to_list(self.nodes, [])
             if isinstance(node, parser.Element) and is_focusable(node)]
@@ -318,10 +355,9 @@ class Tab:
             url.origin() in self.allowed_origins
 
     def loop(self):
-        if self.scroll < 0:
-            self.scroll = 0
-        if self.document and self.scroll > self.document.height - self.tab_height:
-            self.scroll = self.document.height - self.tab_height
+        # a page shorter than the viewport must clamp to 0, never negative
+        max_scroll = max(0, (self.document.height if self.document else 0) - self.tab_height)
+        self.scroll = max(0, min(self.scroll, max_scroll))
 
     def handle_key(self, key):
         match key:

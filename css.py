@@ -292,12 +292,27 @@ class NumericAnimation:
         return str(current_value)
 
 def parse_transition(value):
+    # e.g. "opacity 0.3s ease, transform 200ms ease-in 0.1s": the duration is
+    # the first time-valued token; timing functions and delays are ignored
     properties = {}
     if not value: return properties
     for item in value.split(","):
-        property, duration = item.strip().split(None, 1)
-        frames = max(1, round(float(duration[:-1]) / FRAME_TIME_SEC))
-        properties[property] = frames
+        parts = item.split()
+        if len(parts) < 2: continue
+        seconds = None
+        for token in parts[1:]:
+            try:
+                if token.endswith("ms"):
+                    seconds = float(token[:-2]) / 1000
+                elif token.endswith("s"):
+                    seconds = float(token[:-1])
+                else:
+                    continue
+                break
+            except ValueError:
+                continue
+        if seconds is None: continue
+        properties[parts[0]] = max(1, round(seconds / FRAME_TIME_SEC))
     return properties
 
 def diff_styles(old_style, new_style):

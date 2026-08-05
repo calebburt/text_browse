@@ -85,8 +85,22 @@ size: tuple[int, int] = shutil.get_terminal_size(fallback=(80, 24))
 display_list: list[tuple[tuple[int, int], tuple[float, float, float], tuple[int], str]] = []
 image_list: list[tuple[str, int, int, int, int]] = []
 
-CHAR_WIDTH = 8
-CHAR_HEIGHT = 16
+def _cell_size():
+    """The terminal's real cell size in pixels. Sixel graphics must match it
+    exactly: with a wrong guess the image bleeds into partially-covered
+    neighbor cells, which terminals erase to their default background."""
+    if os.name != "nt":
+        import struct, fcntl, termios
+        try:
+            packed = fcntl.ioctl(sys.stdout.fileno(), termios.TIOCGWINSZ, b"\0" * 8)
+            rows, cols, xpixel, ypixel = struct.unpack("HHHH", packed)
+            if rows and cols and xpixel and ypixel:
+                return max(1, xpixel // cols), max(1, ypixel // rows)
+        except Exception:
+            pass
+    return 8, 16
+
+CHAR_WIDTH, CHAR_HEIGHT = _cell_size()
 
 def __getattr__(name):
     if name == "width":
@@ -96,6 +110,37 @@ def __getattr__(name):
         from layout import height_to_lines
         return height_to_lines(size[1] * CHAR_HEIGHT)
     raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
+import functools
+
+@functools.lru_cache(maxsize=32)
+def image_for(path, w, bg):
+    # layout works in cells; sixel wants a pixel width. Transparency is
+    # flattened onto the page background color: terminals render P2=1
+    # "transparent" sixel pixels as their own default background, not as
+    # whatever we painted underneath, so punch-through can't be trusted.
+    # Padding to whole cells stops the terminal white-filling the sliver
+    # of touched-but-unpainted cell area below/right of the image.
+    return sixel.load_image(path, w * CHAR_WIDTH, 255, bg,
+                            pad_multiple=(CHAR_WIDTH, CHAR_HEIGHT))
+
+@functools.lru_cache(maxsize=64)
+def sixel_for(path, w, bg, crop_top, crop_rows):
+    """Sixel escape string for an image at w cells wide over background bg
+    (0-255 rgb), vertically cropped to [crop_top, crop_top+crop_rows) cell
+    rows, or None. Cached: quantizing on every frame inside the draw lock
+    would starve input."""
+    try:
+        img = image_for(path, w, bg)
+        top = crop_top * CHAR_HEIGHT
+        bottom = min(img.height, (crop_top + crop_rows) * CHAR_HEIGHT)
+        if bottom <= top:
+            return None
+        if top > 0 or bottom < img.height:
+            img = img.crop((0, top, img.width, bottom))
+        return sixel.to_sixel(img)
+    except Exception:
+        return None
 
 def reset():
     global display_list
@@ -122,29 +167,38 @@ def render():
         if bg:
             buf.append("\033[48;2;%d;%d;%dm" % tuple(int(v * 255) for v in bg))
         buf.append(text[:width - x])  # clip so the terminal never auto-wraps
-    for path, x, y, w, h in image_list:
-        if x < 0 or y < 0 or x >= width or y >= height:
+    for path, x, y, w, h, bg in image_list:
+        if x < 0 or x >= width or y >= height or y + h <= 0:
             continue
-        if x + w <= 0 or y + h <= 0:
+        # crop to the viewport: partially scrolled images draw their visible
+        # band, and a sixel never runs past the bottom row (which would make
+        # the terminal scroll the whole screen)
+        crop_top = max(0, -y)
+        crop_rows = min(h, height - y) - crop_top
+        data = sixel_for(path, w, bg, crop_top, crop_rows)
+        if data is None:
             continue
-        buf.append(f"\033[{y+1};{x+1}H\033[0m")
-        try:
-            img = sixel.load_image(path, w, 255, (0, 0, 0))
-        except OSError as e:
-            pass
-    
-        p(sixel.to_sixel(img))
+        buf.append(f"\033[{max(y, 0)+1};{x+1}H\033[0m")
+        buf.append(data)
     buf.append("\033[0m")
     buf.append("\033[?2026l")
     sys.stdout.write("".join(buf))
     sys.stdout.flush()
     size = shutil.get_terminal_size(fallback=(80, 24))
+    global CHAR_WIDTH, CHAR_HEIGHT
+    cell = _cell_size()
+    if cell != (CHAR_WIDTH, CHAR_HEIGHT):
+        CHAR_WIDTH, CHAR_HEIGHT = cell
+        image_for.cache_clear()
+        sixel_for.cache_clear()
 
 def draw_text(pos: tuple[int, int], text: str, color: tuple[float, float, float]=(1, 1, 1,), style: tuple[int]=(), bg: tuple[float, float, float]=None):
     display_list.append((pos, color, bg, style, text))
 
-def draw_image(path: str, x: int, y: int, width: int, height: int):
-    image_list.append((path, x, y, width, height))
+def draw_image(path: str, x: int, y: int, width: int, height: int, bg=(1, 1, 1)):
+    # bg arrives as 0-1 floats; store 0-255 ints (hashable cache key for sixel)
+    bg = tuple(round(v * 255) for v in (bg or (1, 1, 1)))
+    image_list.append((path, x, y, width, height, bg))
 
 def draw_rect(pos: tuple[int, int], size: tuple[int, int], color: tuple[float, float, float]=(1, 1, 1,)):
     if color != None:

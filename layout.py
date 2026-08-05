@@ -1,6 +1,8 @@
 import itertools
 import re
 
+from PIL import Image
+
 import display
 import parser
 import draw
@@ -216,6 +218,13 @@ def tree_to_list(tree, list):
         tree_to_list(child, list)
     return list
 
+def is_flex_row(node):
+    if not isinstance(node, parser.Element):
+        return False
+    display = node.style.get("display", "").casefold()
+    return display in ("flex", "inline-flex") and \
+        not node.style.get("flex-direction", "row").casefold().startswith("column")
+
 def display_type(node):
     """Resolve a node's display for layout: "block", "inline", or "none"."""
     if isinstance(node, parser.Text):
@@ -224,13 +233,20 @@ def display_type(node):
         return "none"
     display = node.style.get("display")
     if display is None:
-        return "block" if node.tag in BLOCK_ELEMENTS else "inline"
-    display = display.casefold()
-    if display == "none":
-        return "none"
-    if display.startswith("inline") or display == "contents":
+        resolved = "block" if node.tag in BLOCK_ELEMENTS else "inline"
+    else:
+        display = display.casefold()
+        if display == "none":
+            return "none"
+        if display.startswith("inline") or display == "contents":
+            resolved = "inline"
+        else:
+            resolved = "block"  # block, flex, grid, table, list-item, ...
+    # items of a row flex container sit side by side: the closest thing this
+    # engine has to that is treating them as inline-level
+    if resolved == "block" and is_flex_row(node.parent):
         return "inline"
-    return "block"  # block, flex, grid, table, list-item, ...
+    return resolved
 
 def in_focused_node(node):
     while node:
@@ -338,13 +354,19 @@ class LineLayout:
         
         for word in self.children:
             word.layout()
-            word.y = self.y
 
         if not self.children:
             self.height = 0
             return
-        else:
-            self.height = 1
+
+        # align children on the baseline: a text row has ascent 1, an
+        # image's rows are all ascent, so text sits on the image's last row
+        max_ascent = max(child.ascent for child in self.children)
+        max_descent = max(child.descent for child in self.children)
+        baseline = self.y + max_ascent
+        for child in self.children:
+            child.y = baseline - child.ascent
+        self.height = max_ascent + max_descent
 
         text_align = self.node.style.get("text-align", "left")
 
@@ -374,7 +396,7 @@ class LineLayout:
             if gap <= 0 or (bg, focused) != (prev_bg, prev_focused):
                 continue
             style = (["inverse"] if focused else []) + [d for d in decorations if d in prev_decorations]
-            cmds.append(draw.DrawText(prev.x + prev.width, self.y, " " * gap,
+            cmds.append(draw.DrawText(prev.x + prev.width, child.y, " " * gap,
                                       style, color_to_tuple(bg), color_to_tuple(color)))
         return cmds
 
@@ -390,7 +412,10 @@ class TextLayout:
         self.y = None
         self.width = None
         self.height = None
-    
+        # rows above-and-including / below the baseline row
+        self.ascent = 1
+        self.descent = 0
+
     def layout(self):
         self.width = len(self.word)
 
@@ -423,7 +448,51 @@ class TextLayout:
         return [draw.DrawText(self.x, self.y, self.word, style, background,
                               blend_with_background(color_to_tuple(color), background, opacity))]
 
-class InputLayout:
+def image_cell_size(node, max_width=None):
+    """Terminal (cols, rows) for an <img>: width/height attributes are CSS
+    pixels; missing dimensions come from the file's natural size and aspect."""
+    path = getattr(node, "image", "broken_image.png")
+    try:
+        with Image.open(path) as im:
+            natural_w, natural_h = im.size
+    except Exception:
+        natural_w, natural_h = display.CHAR_WIDTH, display.CHAR_HEIGHT
+
+    def attr_px(name):
+        value = node.attributes.get(name, "").removesuffix("px")
+        try:
+            return float(value) if value else None
+        except ValueError:
+            return None
+
+    def css_px(prop):
+        value = node.style.get(prop, "").strip().casefold()
+        try:
+            if value.endswith("px"): return float(value[:-2])
+            if value.endswith("rem"): return float(value[:-3]) * 16
+            if value.endswith("em"): return float(value[:-2]) * 16
+        except ValueError:
+            pass
+        return None
+
+    # CSS width/height beat the HTML attributes (that's the cascade)
+    w = css_px("width") if css_px("width") is not None else attr_px("width")
+    h = css_px("height") if css_px("height") is not None else attr_px("height")
+    if w is None and h is None:
+        w, h = natural_w, natural_h
+    elif w is None:
+        w = natural_w * h / natural_h if natural_h else natural_w
+    elif h is None:
+        h = natural_h * w / natural_w if natural_w else natural_h
+
+    cols = max(1, width_to_chars(round(w)))
+    rows = max(1, height_to_lines(round(h)))
+    if max_width and cols > max_width:
+        rows = max(1, round(rows * max_width / cols))
+        cols = max_width
+    return cols, rows
+
+class EmbedLayout:
     def __init__(self, node, parent, previous, spacing=1):
         self.node: parser.HTMLNode = node
         self.children = []
@@ -431,16 +500,39 @@ class InputLayout:
         self.previous = previous
         self.spacing = spacing
         self.x, self.y = None, None
+        # rows above-and-including / below the baseline row
+        self.ascent = 1
+        self.descent = 0
 
     def layout(self):
-        self.width = INPUT_WIDTH
-
         if self.previous:
             self.x = self.previous.x + self.previous.width + self.spacing
         else:
             self.x = self.parent.x
 
+class ImageLayout(EmbedLayout):
+    def layout(self):
+        super().layout()
+        self.width, self.height = image_cell_size(self.node, max_width=self.parent.width)
+        # the image sits on the baseline, so every row of it is ascent
+        self.ascent = self.height
+        self.descent = 0
+
+    def needs_paint(self):
+        return True
+
+    def paint(self):
+        path = getattr(self.node, "image", "broken_image.png")
+        # composite transparency onto the page background: terminals disagree
+        # about what shows through P2=1 sixel pixels (often their default bg)
+        bg = color_to_tuple(self.node.style.get("background-color", "white")) or (1, 1, 1)
+        return [draw.DrawImage(path, self.x, self.y, self.width, self.height, bg)]
+
+class InputLayout(EmbedLayout):
+    def __init__(self, node, parent, previous, spacing=1):
+        super().__init__(node, parent, previous, spacing)
         self.height = 1
+        self.width = INPUT_WIDTH
 
     def needs_paint(self):
         return True
@@ -538,12 +630,17 @@ class BlockLayout:
         else:
             if display_type(tree) == "none":
                 return
+            if is_flex_row(tree.parent):
+                self.pending_space = True  # flex items never touch
             if tree.tag == "br":
                 self.new_line()
             elif tree.tag == "hr":
                 self.new_line()
                 self.children[-1].children.append(TextLayout(tree, "\u2500" * self.width, self.children[-1], None))
                 self.new_line()
+            elif tree.tag == "img":
+                self.image(tree)
+                return
             elif tree.tag in ("input", "textarea", "button"):
                 if tree.attributes.get("type") == "hidden":
                     return
@@ -602,6 +699,10 @@ class BlockLayout:
 
     def input(self, node: parser.HTMLNode):
         self.place(node, INPUT_WIDTH, lambda line, prev, space: InputLayout(node, line, prev, spacing=space))
+
+    def image(self, node: parser.HTMLNode):
+        w, _ = image_cell_size(node, max_width=self.width)
+        self.place(node, w, lambda line, prev, space: ImageLayout(node, line, prev, spacing=space))
 
     def place(self, node, w, make):
         space = 1 if self.pending_space and self.cursor_x > 0 else 0
